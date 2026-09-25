@@ -68,13 +68,13 @@ export const PoolInfo: React.FC<PoolInfoProps> = ({
           {/* Top 24h Record Banner */}
           <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl text-[11px] text-amber-300">
             <div className="flex items-center gap-1.5 font-semibold">
-              <span className="text-sm">🏆</span>
-              <span>Top Game 24h</span>
+              <span className="text-sm">⚡</span>
+              <span>Territory Jackpot</span>
               <span className="text-white/30">•</span>
-              <span className="font-mono text-white">13,840.69 CREDITS</span>
+              <span className="font-mono text-white">Provably Fair SHA-256</span>
             </div>
-            <div className="text-amber-400/80 font-medium truncate max-w-[90px]">
-              Zooba
+            <div className="text-amber-400/80 font-medium truncate max-w-[120px]">
+              Authoritative
             </div>
           </div>
 
@@ -114,9 +114,13 @@ export const PoolInfo: React.FC<PoolInfoProps> = ({
             <div className="text-right">
               {roundState.status === 'WAITING_FOR_PLAYERS' && (
                 <div className="flex items-center gap-1.5 text-amber-400">
-                  <Clock className="w-3.5 h-3.5 animate-spin" />
+                  <Clock className="w-3.5 h-3.5" />
                   <span className="font-mono text-xs font-bold">
-                    Waiting for players ({roundState.bets.length}/2)
+                    {roundState.bets.length === 0
+                      ? 'Waiting for bet'
+                      : roundState.bets.length === 1
+                      ? '1 player ready'
+                      : `${roundState.bets.length} players ready`}
                   </span>
                 </div>
               )}

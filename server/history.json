@@ -1,0 +1,917 @@
+[
+  {
+    "roundId": 436017,
+    "poolTier": "HIGH_ROLLER",
+    "totalPool": 2275,
+    "playerCount": 2,
+    "players": [
+      {
+        "playerId": "bot_lmia",
+        "username": "-LMIA-",
+        "avatar": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 410,
+        "relics": [
+          {
+            "name": "Neon Prism",
+            "rarity": "epic",
+            "value": 750,
+            "icon": "🔮",
+            "color": "#c084fc",
+            "id": "relic_1790305127898_el06t"
+          }
+        ],
+        "totalBet": 1160,
+        "color": "#0ea5e9",
+        "startTicket": 0,
+        "endTicket": 1160,
+        "winProbability": 0.5099,
+        "isBot": true
+      },
+      {
+        "playerId": "usr_y77921a",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 40,
+        "relics": [
+          {
+            "id": "rel_faucet_1790305071821",
+            "name": "Cobalt Core",
+            "rarity": "rare",
+            "value": 300,
+            "icon": "💎",
+            "color": "#38bdf8"
+          },
+          {
+            "id": "rel_init_1",
+            "name": "Bronze Talisman",
+            "rarity": "common",
+            "value": 25,
+            "icon": "🥉",
+            "color": "#cd7f32"
+          },
+          {
+            "id": "rel_init_3",
+            "name": "Neon Prism",
+            "rarity": "epic",
+            "value": 750,
+            "icon": "🔮",
+            "color": "#c084fc"
+          }
+        ],
+        "totalBet": 1115,
+        "color": "#ccff00",
+        "startTicket": 1160,
+        "endTicket": 2275,
+        "winProbability": 0.4901
+      }
+    ],
+    "winner": {
+      "playerId": "bot_lmia",
+      "username": "-LMIA-",
+      "avatar": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80",
+      "color": "#0ea5e9",
+      "winProbability": 0.5099,
+      "payout": 2132.73,
+      "rakeAmount": 142.27,
+      "rakePercent": 12.76,
+      "wonRelics": [
+        {
+          "name": "Neon Prism",
+          "rarity": "epic",
+          "value": 750,
+          "icon": "🔮",
+          "color": "#c084fc",
+          "id": "relic_1790305127898_el06t"
+        },
+        {
+          "id": "rel_faucet_1790305071821",
+          "name": "Cobalt Core",
+          "rarity": "rare",
+          "value": 300,
+          "icon": "💎",
+          "color": "#38bdf8"
+        },
+        {
+          "id": "rel_init_1",
+          "name": "Bronze Talisman",
+          "rarity": "common",
+          "value": 25,
+          "icon": "🥉",
+          "color": "#cd7f32"
+        },
+        {
+          "id": "rel_init_3",
+          "name": "Neon Prism",
+          "rarity": "epic",
+          "value": 750,
+          "icon": "🔮",
+          "color": "#c084fc"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "543816f62d2815f41c3b834e489aec16e704a222d9a727b1f8025a9af178768f",
+      "seedHash": "b45e0a57794e391ba6c959c7917e7ff3f6e4f448cba6aa58294dce90563fac24",
+      "winningTicket": 1.78,
+      "winningValue": 1.78
+    },
+    "completedAt": 1790305160340
+  },
+  {
+    "roundId": 436016,
+    "poolTier": "HIGH_ROLLER",
+    "totalPool": 770,
+    "playerCount": 2,
+    "players": [
+      {
+        "playerId": "bot_lmia",
+        "username": "-LMIA-",
+        "avatar": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 300,
+        "relics": [],
+        "totalBet": 300,
+        "color": "#0ea5e9",
+        "startTicket": 0,
+        "endTicket": 300,
+        "winProbability": 0.3896,
+        "isBot": true
+      },
+      {
+        "playerId": "usr_y77921a",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 20,
+        "relics": [
+          {
+            "id": "rel_init_2",
+            "name": "Silver Chalice",
+            "rarity": "rare",
+            "value": 150,
+            "icon": "🏆",
+            "color": "#cbd5e1"
+          },
+          {
+            "id": "rel_faucet_1790305070429",
+            "name": "Cobalt Core",
+            "rarity": "rare",
+            "value": 300,
+            "icon": "💎",
+            "color": "#38bdf8"
+          }
+        ],
+        "totalBet": 470,
+        "color": "#ccff00",
+        "startTicket": 300,
+        "endTicket": 770,
+        "winProbability": 0.6104
+      }
+    ],
+    "winner": {
+      "playerId": "bot_lmia",
+      "username": "-LMIA-",
+      "avatar": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80",
+      "color": "#0ea5e9",
+      "winProbability": 0.3896,
+      "payout": 696.44,
+      "rakeAmount": 73.56,
+      "rakePercent": 15.65,
+      "wonRelics": [
+        {
+          "id": "rel_init_2",
+          "name": "Silver Chalice",
+          "rarity": "rare",
+          "value": 150,
+          "icon": "🏆",
+          "color": "#cbd5e1"
+        },
+        {
+          "id": "rel_faucet_1790305070429",
+          "name": "Cobalt Core",
+          "rarity": "rare",
+          "value": 300,
+          "icon": "💎",
+          "color": "#38bdf8"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "166ed1bae3caa0e707576be93e4b2bec36e17f8ffaec023096a3b92e23822890",
+      "seedHash": "0fe8a09439a10c4286ee56ad90200c668417e96802aa688939469dd7031ee836",
+      "winningTicket": 191.46,
+      "winningValue": 191.46
+    },
+    "completedAt": 1790305115370
+  },
+  {
+    "roundId": 436015,
+    "poolTier": "STANDARD",
+    "totalPool": 450,
+    "playerCount": 2,
+    "players": [
+      {
+        "playerId": "usr_y77921a",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 180,
+        "relics": [],
+        "totalBet": 180,
+        "color": "#ccff00",
+        "startTicket": 0,
+        "endTicket": 180,
+        "winProbability": 0.4
+      },
+      {
+        "playerId": "bot_zooba",
+        "username": "Zooba",
+        "avatar": "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 270,
+        "relics": [],
+        "totalBet": 270,
+        "color": "#10b981",
+        "startTicket": 180,
+        "endTicket": 450,
+        "winProbability": 0.6,
+        "isBot": true
+      }
+    ],
+    "winner": {
+      "playerId": "bot_zooba",
+      "username": "Zooba",
+      "avatar": "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=120&auto=format&fit=crop&q=80",
+      "color": "#10b981",
+      "winProbability": 0.6,
+      "payout": 430.92,
+      "rakeAmount": 19.08,
+      "rakePercent": 10.6,
+      "wonRelics": []
+    },
+    "provablyFair": {
+      "serverSeed": "fa19530a4a9f9a9c8ae430ead079a6432042837b595157f81513bd5298b49140",
+      "seedHash": "067280c9184818b5ca507499e7db8b2fc5f98d8cf65454278f86a1122787a824",
+      "winningTicket": 358.19,
+      "winningValue": 358.19
+    },
+    "completedAt": 1790305015888
+  },
+  {
+    "roundId": 436014,
+    "poolTier": "HIGH_ROLLER",
+    "totalPool": 2500,
+    "playerCount": 5,
+    "players": [
+      {
+        "playerId": "usr_y77921a",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 540,
+        "relics": [],
+        "totalBet": 540,
+        "color": "#ccff00",
+        "startTicket": 0,
+        "endTicket": 540,
+        "winProbability": 0.216
+      },
+      {
+        "playerId": "bot_roman",
+        "username": "Roman",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 450,
+        "relics": [],
+        "totalBet": 450,
+        "color": "#f59e0b",
+        "startTicket": 540,
+        "endTicket": 990,
+        "winProbability": 0.18,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_micolaj",
+        "username": "Морячок Mikołaj",
+        "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 210,
+        "relics": [],
+        "totalBet": 210,
+        "color": "#14b8a6",
+        "startTicket": 990,
+        "endTicket": 1200,
+        "winProbability": 0.084,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_tetris",
+        "username": "Тетрис #проклят",
+        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 270,
+        "relics": [
+          {
+            "name": "Neon Prism",
+            "rarity": "epic",
+            "value": 750,
+            "icon": "🔮",
+            "color": "#c084fc",
+            "id": "relic_1790304942525_lna4m"
+          }
+        ],
+        "totalBet": 1020,
+        "color": "#8b5cf6",
+        "startTicket": 1200,
+        "endTicket": 2220,
+        "winProbability": 0.408,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_lmia",
+        "username": "-LMIA-",
+        "avatar": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 130,
+        "relics": [
+          {
+            "name": "Silver Chalice",
+            "rarity": "rare",
+            "value": 150,
+            "icon": "🏆",
+            "color": "#cbd5e1",
+            "id": "relic_1790304944829_nvbz3"
+          }
+        ],
+        "totalBet": 280,
+        "color": "#0ea5e9",
+        "startTicket": 2220,
+        "endTicket": 2500,
+        "winProbability": 0.112,
+        "isBot": true
+      }
+    ],
+    "winner": {
+      "playerId": "bot_micolaj",
+      "username": "Морячок Mikołaj",
+      "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
+      "color": "#14b8a6",
+      "winProbability": 0.084,
+      "payout": 1973.76,
+      "rakeAmount": 526.24,
+      "rakePercent": 22.98,
+      "wonRelics": [
+        {
+          "name": "Neon Prism",
+          "rarity": "epic",
+          "value": 750,
+          "icon": "🔮",
+          "color": "#c084fc",
+          "id": "relic_1790304942525_lna4m"
+        },
+        {
+          "name": "Silver Chalice",
+          "rarity": "rare",
+          "value": 150,
+          "icon": "🏆",
+          "color": "#cbd5e1",
+          "id": "relic_1790304944829_nvbz3"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "9ce2d9adedcb72327201ce0be10a7be439ccb04a60f55f5acef393235b6badef",
+      "seedHash": "20f9bf32b84e34212395fa7c580da4fe3fbd356d621428b3c45f241b71079b59",
+      "winningTicket": 995.05,
+      "winningValue": 995.05
+    },
+    "completedAt": 1790304970656
+  },
+  {
+    "roundId": 436013,
+    "poolTier": "STANDARD",
+    "totalPool": 1580,
+    "playerCount": 5,
+    "players": [
+      {
+        "playerId": "bot_lmia",
+        "username": "-LMIA-",
+        "avatar": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 100,
+        "relics": [],
+        "totalBet": 100,
+        "color": "#0ea5e9",
+        "startTicket": 0,
+        "endTicket": 100,
+        "winProbability": 0.0633,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_sumnek",
+        "username": "Sumnek",
+        "avatar": "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 460,
+        "relics": [
+          {
+            "name": "Iron Emblem",
+            "rarity": "common",
+            "value": 50,
+            "icon": "🛡️",
+            "color": "#94a3b8",
+            "id": "relic_1790304896614_b0655"
+          }
+        ],
+        "totalBet": 510,
+        "color": "#06b6d4",
+        "startTicket": 100,
+        "endTicket": 610,
+        "winProbability": 0.3228,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_zooba",
+        "username": "Zooba",
+        "avatar": "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 140,
+        "relics": [],
+        "totalBet": 140,
+        "color": "#10b981",
+        "startTicket": 610,
+        "endTicket": 750,
+        "winProbability": 0.0886,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_micolaj",
+        "username": "Морячок Mikołaj",
+        "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 30,
+        "relics": [
+          {
+            "name": "Cobalt Core",
+            "rarity": "rare",
+            "value": 300,
+            "icon": "💎",
+            "color": "#38bdf8",
+            "id": "relic_1790304899437_9w7mu"
+          }
+        ],
+        "totalBet": 330,
+        "color": "#14b8a6",
+        "startTicket": 750,
+        "endTicket": 1080,
+        "winProbability": 0.2089,
+        "isBot": true
+      },
+      {
+        "playerId": "usr_y77921a",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 500,
+        "relics": [],
+        "totalBet": 500,
+        "color": "#ccff00",
+        "startTicket": 1080,
+        "endTicket": 1580,
+        "winProbability": 0.3165
+      }
+    ],
+    "winner": {
+      "playerId": "bot_zooba",
+      "username": "Zooba",
+      "avatar": "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=120&auto=format&fit=crop&q=80",
+      "color": "#10b981",
+      "winProbability": 0.0886,
+      "payout": 1250.67,
+      "rakeAmount": 329.33,
+      "rakePercent": 22.87,
+      "wonRelics": [
+        {
+          "name": "Iron Emblem",
+          "rarity": "common",
+          "value": 50,
+          "icon": "🛡️",
+          "color": "#94a3b8",
+          "id": "relic_1790304896614_b0655"
+        },
+        {
+          "name": "Cobalt Core",
+          "rarity": "rare",
+          "value": 300,
+          "icon": "💎",
+          "color": "#38bdf8",
+          "id": "relic_1790304899437_9w7mu"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "3750c73c5ea1a626ad64aaf2945fe8ce8d1b439e443f40b41b740080b839d6ac",
+      "seedHash": "3d6de27f48338791b20f8a198c856bc1452d686954e4f5a983bd9457949e94a5",
+      "winningTicket": 720.89,
+      "winningValue": 720.89
+    },
+    "completedAt": 1790304927841
+  },
+  {
+    "roundId": 436012,
+    "poolTier": "HIGH_ROLLER",
+    "totalPool": 450,
+    "playerCount": 1,
+    "players": [
+      {
+        "playerId": "bot_micolaj",
+        "username": "Морячок Mikołaj",
+        "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 300,
+        "relics": [
+          {
+            "name": "Silver Chalice",
+            "rarity": "rare",
+            "value": 150,
+            "icon": "🏆",
+            "color": "#cbd5e1",
+            "id": "relic_1790304305759_k5qbd"
+          }
+        ],
+        "totalBet": 450,
+        "color": "#14b8a6",
+        "startTicket": 0,
+        "endTicket": 450,
+        "winProbability": 1,
+        "isBot": true
+      }
+    ],
+    "winner": {
+      "playerId": "bot_micolaj",
+      "username": "Морячок Mikołaj",
+      "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
+      "color": "#14b8a6",
+      "winProbability": 1,
+      "payout": 450,
+      "rakeAmount": 0,
+      "rakePercent": 1,
+      "wonRelics": [
+        {
+          "name": "Silver Chalice",
+          "rarity": "rare",
+          "value": 150,
+          "icon": "🏆",
+          "color": "#cbd5e1",
+          "id": "relic_1790304305759_k5qbd"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "181a5a767a0d06d3048b652617794ca8bad69871417352e35c67a67c73f42140",
+      "seedHash": "97f9a69839eb8fd18ad8a8754d69ec80ea1e2d26fa9e6e40bc746d88299eeb44",
+      "winningTicket": 418.67,
+      "winningValue": 418.67
+    },
+    "completedAt": 1790304326332
+  },
+  {
+    "roundId": 436012,
+    "poolTier": "STANDARD",
+    "totalPool": 1360,
+    "playerCount": 3,
+    "players": [
+      {
+        "playerId": "bot_sumnek",
+        "username": "Sumnek",
+        "avatar": "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 330,
+        "relics": [],
+        "totalBet": 330,
+        "color": "#06b6d4",
+        "startTicket": 0,
+        "endTicket": 330,
+        "winProbability": 0.2426,
+        "isBot": true
+      },
+      {
+        "playerId": "usr_y77921a",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 420,
+        "relics": [],
+        "totalBet": 420,
+        "color": "#ccff00",
+        "startTicket": 330,
+        "endTicket": 750,
+        "winProbability": 0.3088
+      },
+      {
+        "playerId": "bot_inaku",
+        "username": "inaku",
+        "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 310,
+        "relics": [
+          {
+            "name": "Cobalt Core",
+            "rarity": "rare",
+            "value": 300,
+            "icon": "💎",
+            "color": "#38bdf8",
+            "id": "relic_1790303687742_8wr0t"
+          }
+        ],
+        "totalBet": 610,
+        "color": "#ec4899",
+        "startTicket": 750,
+        "endTicket": 1360,
+        "winProbability": 0.4485,
+        "isBot": true
+      }
+    ],
+    "winner": {
+      "playerId": "bot_sumnek",
+      "username": "Sumnek",
+      "avatar": "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=120&auto=format&fit=crop&q=80",
+      "color": "#06b6d4",
+      "winProbability": 0.2426,
+      "payout": 1162.45,
+      "rakeAmount": 197.55,
+      "rakePercent": 19.18,
+      "wonRelics": [
+        {
+          "name": "Cobalt Core",
+          "rarity": "rare",
+          "value": 300,
+          "icon": "💎",
+          "color": "#38bdf8",
+          "id": "relic_1790303687742_8wr0t"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "e904e1dde5c6258abe2e51516c5f00b7e3fd14f4e8e92ca8805d99eb2a552202",
+      "seedHash": "4630758b5c528d777a6dff3f62a69ad51ce75764c5355011fa936d2369a2becf",
+      "winningTicket": 261.52,
+      "winningValue": 261.52
+    },
+    "completedAt": 1790303715405
+  },
+  {
+    "roundId": 436012,
+    "poolTier": "STANDARD",
+    "totalPool": 1650,
+    "playerCount": 3,
+    "players": [
+      {
+        "playerId": "bot_micolaj",
+        "username": "Морячок Mikołaj",
+        "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 280,
+        "relics": [
+          {
+            "name": "Silver Chalice",
+            "rarity": "rare",
+            "value": 150,
+            "icon": "🏆",
+            "color": "#cbd5e1",
+            "id": "relic_1790303338106_9ktij"
+          }
+        ],
+        "totalBet": 430,
+        "color": "#14b8a6",
+        "startTicket": 0,
+        "endTicket": 430,
+        "winProbability": 0.2606,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_inaku",
+        "username": "inaku",
+        "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 450,
+        "relics": [
+          {
+            "name": "Silver Chalice",
+            "rarity": "rare",
+            "value": 150,
+            "icon": "🏆",
+            "color": "#cbd5e1",
+            "id": "relic_1790303338553_eqfcs"
+          }
+        ],
+        "totalBet": 600,
+        "color": "#ec4899",
+        "startTicket": 430,
+        "endTicket": 1030,
+        "winProbability": 0.3636,
+        "isBot": true
+      },
+      {
+        "playerId": "usr_y77921a",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 620,
+        "relics": [],
+        "totalBet": 620,
+        "color": "#ccff00",
+        "startTicket": 1030,
+        "endTicket": 1650,
+        "winProbability": 0.3758
+      }
+    ],
+    "winner": {
+      "playerId": "bot_micolaj",
+      "username": "Морячок Mikołaj",
+      "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
+      "color": "#14b8a6",
+      "winProbability": 0.2606,
+      "payout": 1421.25,
+      "rakeAmount": 228.75,
+      "rakePercent": 18.75,
+      "wonRelics": [
+        {
+          "name": "Silver Chalice",
+          "rarity": "rare",
+          "value": 150,
+          "icon": "🏆",
+          "color": "#cbd5e1",
+          "id": "relic_1790303338106_9ktij"
+        },
+        {
+          "name": "Silver Chalice",
+          "rarity": "rare",
+          "value": 150,
+          "icon": "🏆",
+          "color": "#cbd5e1",
+          "id": "relic_1790303338553_eqfcs"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "2b38a3a6ae0c78e13c256f18a38e0c9bfa5c8839652b5e9617a1559b642a2474",
+      "seedHash": "6e0179148f7d0567b4747d13e4b7c49c1928e641f31372b3c6b7068abddbfcf2",
+      "winningTicket": 133.19,
+      "winningValue": 133.19
+    },
+    "completedAt": 1790303368011
+  },
+  {
+    "roundId": 436012,
+    "poolTier": "STANDARD",
+    "totalPool": 1700,
+    "playerCount": 1,
+    "players": [
+      {
+        "playerId": "bot_sumnek",
+        "username": "Sumnek",
+        "avatar": "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=120&auto=format&fit=crop&q=80",
+        "creditBet": 200,
+        "relics": [
+          {
+            "name": "Cyber Crown",
+            "rarity": "epic",
+            "value": 1500,
+            "icon": "👑",
+            "color": "#facc15",
+            "id": "relic_1790303235390_2zjx6"
+          }
+        ],
+        "totalBet": 1700,
+        "color": "#06b6d4",
+        "startTicket": 0,
+        "endTicket": 1700,
+        "winProbability": 1,
+        "isBot": true
+      }
+    ],
+    "winner": {
+      "playerId": "bot_sumnek",
+      "username": "Sumnek",
+      "avatar": "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=120&auto=format&fit=crop&q=80",
+      "color": "#06b6d4",
+      "winProbability": 1,
+      "payout": 1700,
+      "rakeAmount": 0,
+      "rakePercent": 1,
+      "wonRelics": [
+        {
+          "name": "Cyber Crown",
+          "rarity": "epic",
+          "value": 1500,
+          "icon": "👑",
+          "color": "#facc15",
+          "id": "relic_1790303235390_2zjx6"
+        }
+      ]
+    },
+    "provablyFair": {
+      "serverSeed": "66deab3c4baa4ac191de13786abc694ea109c0f38829ccb02d9c0bb2b16d9fd7",
+      "seedHash": "83afc69bdef81bf661108caf2dd60aa0a7a4ba0eb5c8b1021f5b413bf7b55f0d",
+      "winningTicket": 552.23,
+      "winningValue": 552.23
+    },
+    "completedAt": 1790303266215
+  },
+  {
+    "roundId": 436010,
+    "poolTier": "HIGH_ROLLER",
+    "totalPool": 2850,
+    "playerCount": 3,
+    "players": [
+      {
+        "playerId": "bot_tetris",
+        "username": "Тетрис #проклят",
+        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+        "color": "#8b5cf6",
+        "creditBet": 1500,
+        "relics": [],
+        "totalBet": 1500,
+        "startTicket": 0,
+        "endTicket": 1500,
+        "winProbability": 0.5263,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_lmia",
+        "username": "-LMIA-",
+        "avatar": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80",
+        "color": "#0ea5e9",
+        "creditBet": 850,
+        "relics": [],
+        "totalBet": 850,
+        "startTicket": 1500,
+        "endTicket": 2350,
+        "winProbability": 0.2982,
+        "isBot": true
+      },
+      {
+        "playerId": "bot_roman",
+        "username": "Roman",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "color": "#f59e0b",
+        "creditBet": 500,
+        "relics": [],
+        "totalBet": 500,
+        "startTicket": 2350,
+        "endTicket": 2850,
+        "winProbability": 0.1754,
+        "isBot": true
+      }
+    ],
+    "winner": {
+      "playerId": "bot_tetris",
+      "username": "Тетрис #проклят",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+      "color": "#8b5cf6",
+      "winProbability": 0.5263,
+      "payout": 2679,
+      "rakeAmount": 171,
+      "rakePercent": 6,
+      "wonRelics": []
+    },
+    "provablyFair": {
+      "serverSeed": "644ed62981374091283749182739481273948172938471928374918273948127",
+      "seedHash": "cb5aef8eb8293847192837491827394817293847192837491827394817293847",
+      "winningTicket": 642.15,
+      "winningValue": 642.15
+    },
+    "completedAt": 1790303012144
+  },
+  {
+    "roundId": 436009,
+    "poolTier": "STANDARD",
+    "totalPool": 620,
+    "playerCount": 2,
+    "players": [
+      {
+        "playerId": "usr_me",
+        "username": "NeoGlitch",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+        "color": "#ccff00",
+        "creditBet": 400,
+        "relics": [],
+        "totalBet": 400,
+        "startTicket": 0,
+        "endTicket": 400,
+        "winProbability": 0.6452
+      },
+      {
+        "playerId": "bot_inaku",
+        "username": "inaku",
+        "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+        "color": "#ec4899",
+        "creditBet": 220,
+        "relics": [],
+        "totalBet": 220,
+        "startTicket": 400,
+        "endTicket": 620,
+        "winProbability": 0.3548,
+        "isBot": true
+      }
+    ],
+    "winner": {
+      "playerId": "usr_me",
+      "username": "NeoGlitch",
+      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+      "color": "#ccff00",
+      "winProbability": 0.6452,
+      "payout": 582.8,
+      "rakeAmount": 37.2,
+      "rakePercent": 6,
+      "wonRelics": []
+    },
+    "provablyFair": {
+      "serverSeed": "e880fa31b9920194812398418abdf62901239129031203912039120391203912",
+      "seedHash": "dd694ad1eb834710293847192837491827394817293847192837491827394817293847",
+      "winningTicket": 154.2,
+      "winningValue": 154.2
+    },
+    "completedAt": 1790302772144
+  }
+]

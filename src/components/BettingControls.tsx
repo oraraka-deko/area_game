@@ -10,6 +10,7 @@ interface BettingControlsProps {
   onOpenRelicPicker: () => void;
   onRemoveRelic: (id: string) => void;
   onPlaceBet: (creditAmount: number, relics: Relic[]) => void;
+  onStartRound?: () => void;
 }
 
 export const BettingControls: React.FC<BettingControlsProps> = ({
@@ -18,7 +19,8 @@ export const BettingControls: React.FC<BettingControlsProps> = ({
   selectedRelics,
   onOpenRelicPicker,
   onRemoveRelic,
-  onPlaceBet
+  onPlaceBet,
+  onStartRound
 }) => {
   const [betInput, setBetInput] = useState<string>('20');
   const [isPlacing, setIsPlacing] = useState(false);
@@ -26,8 +28,9 @@ export const BettingControls: React.FC<BettingControlsProps> = ({
   const canBet = 
     (roundState.status === 'WAITING_FOR_PLAYERS' || roundState.status === 'BETTING_OPEN') && 
     !roundState.isBettingClosed && 
-    roundState.timeRemainingMs > 3000;
+    (roundState.status === 'WAITING_FOR_PLAYERS' || roundState.timeRemainingMs > 3000);
 
+  const userBet = roundState.bets.find(b => b.playerId === user.id);
   const numericBet = Math.max(0, parseInt(betInput || '0', 10));
   const relicsValue = selectedRelics.reduce((sum, r) => sum + r.value, 0);
   const totalBetValue = numericBet + relicsValue;
@@ -53,6 +56,26 @@ export const BettingControls: React.FC<BettingControlsProps> = ({
 
   return (
     <div className="flex flex-col gap-2.5 bg-[#12141f]/95 p-3 rounded-2xl border border-white/10 shadow-lg">
+      {/* Ready Banner if already bet and waiting */}
+      {userBet && roundState.status === 'WAITING_FOR_PLAYERS' && (
+        <div className="flex items-center justify-between p-2 rounded-xl bg-[#ccff00]/10 border border-[#ccff00]/30 text-xs text-[#ccff00]">
+          <span className="font-semibold">
+            ✓ Your stake is in ({userBet.totalBet} 🪙)
+          </span>
+          {onStartRound && (
+            <button
+              onClick={() => {
+                sound.playClick();
+                onStartRound();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-[#ccff00] text-black font-extrabold text-[11px] hover:bg-[#b8e600] transition active:scale-95 flex items-center gap-1 shadow-sm"
+            >
+              <span>▶ Start Round</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Quick Amount Presets */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
         <span className="text-[11px] text-white/40 flex-shrink-0 mr-1 font-medium">

@@ -91,6 +91,22 @@ wss.on('connection', (ws: WebSocket) => {
         }
       } else if (msg.type === 'PING') {
         ws.send(JSON.stringify({ type: 'PONG' }));
+      } else if (msg.type === 'DEV_ADD_PLAYER') {
+        const result = gameEngine.addRandomPlayer(msg.creditAmount);
+        ws.send(JSON.stringify({
+          type: 'DEV_ADD_PLAYER_RESPONSE',
+          success: result.success,
+          player: result.player,
+          error: result.error
+        }));
+      } else if (msg.type === 'DEV_START_ROUND') {
+        gameEngine.forceStartCountdown();
+      } else if (msg.type === 'DEV_ROLL_NOW') {
+        gameEngine.forceRollNow();
+      } else if (msg.type === 'DEV_RESET_ROUND') {
+        gameEngine.forceResetRound();
+      } else if (msg.type === 'DEV_SET_AUTO_START') {
+        gameEngine.setAutoStart(Boolean(msg.autoStart));
       }
     } catch (err) {
       console.error('Error handling WS message:', err);
@@ -109,6 +125,34 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/history', (req, res) => {
   res.json({ history: gameEngine.getHistory() });
+});
+
+// Dev Controls REST endpoints
+app.post('/api/dev/add-player', (req, res) => {
+  const { creditAmount } = req.body || {};
+  const result = gameEngine.addRandomPlayer(creditAmount !== undefined ? Number(creditAmount) : undefined);
+  res.json(result);
+});
+
+app.post('/api/dev/start-round', (req, res) => {
+  gameEngine.forceStartCountdown();
+  res.json({ success: true });
+});
+
+app.post('/api/dev/roll-now', (req, res) => {
+  gameEngine.forceRollNow();
+  res.json({ success: true });
+});
+
+app.post('/api/dev/reset-round', (req, res) => {
+  gameEngine.forceResetRound();
+  res.json({ success: true });
+});
+
+app.post('/api/dev/auto-start', (req, res) => {
+  const { enabled } = req.body || {};
+  gameEngine.setAutoStart(Boolean(enabled));
+  res.json({ success: true, autoStart: gameEngine.autoStart });
 });
 
 // Provably Fair Verification Endpoint

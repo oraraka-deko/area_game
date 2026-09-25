@@ -19,6 +19,7 @@ import { RelicInventoryModal } from './components/RelicInventoryModal.js';
 import { PrivateRoomModal } from './components/PrivateRoomModal.js';
 import { LiveChat } from './components/LiveChat.js';
 import { RoundReplayModal } from './components/RoundReplayModal.js';
+import { DevControls } from './components/DevControls.js';
 import { sound } from './utils/audio.js';
 
 // Default starting user profile
@@ -55,22 +56,30 @@ export default function App() {
   // Round & Game State
   const [roundState, setRoundState] = useState<CurrentRoundState>({
     roundId: 436014,
-    status: 'BETTING_OPEN',
+    status: 'WAITING_FOR_PLAYERS',
     poolTier: 'STANDARD',
     serverSeedHash: 'e880fa31b9920194812398418abdf62901239129031203912039120391203912',
     totalPool: 0,
     bets: [],
-    timeRemainingMs: 22000,
-    roundDurationMs: 22000,
-    resolutionDurationMs: 7500,
-    celebrationDurationMs: 6000
+    timeRemainingMs: 20000,
+    roundDurationMs: 20000,
+    resolutionDurationMs: 8500,
+    celebrationDurationMs: 6000,
+    minPlayersNeeded: 1
   });
 
-  const [history, setHistory] = useState<RoundHistoryItem[]>([]);
+  const [history, setHistory] = useState<RoundHistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('arena_history');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [selectedRelics, setSelectedRelics] = useState<Relic[]>([]);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [autoStart, setAutoStart] = useState<boolean>(false);
 
   // Modals
   const [showVictoryModal, setShowVictoryModal] = useState(false);
@@ -81,6 +90,59 @@ export default function App() {
   const [showRelicPicker, setShowRelicPicker] = useState(false);
   const [showPrivateRoomModal, setShowPrivateRoomModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
+
+  // Dev actions
+  const handleAddRandomPlayer = (creditAmount?: number) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'DEV_ADD_PLAYER',
+        creditAmount
+      }));
+    } else {
+      fetch('/api/dev/add-player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creditAmount })
+      });
+    }
+  };
+
+  const handleStartRound = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'DEV_START_ROUND' }));
+    } else {
+      fetch('/api/dev/start-round', { method: 'POST' });
+    }
+  };
+
+  const handleRollNow = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'DEV_ROLL_NOW' }));
+    } else {
+      fetch('/api/dev/roll-now', { method: 'POST' });
+    }
+  };
+
+  const handleResetRound = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'DEV_RESET_ROUND' }));
+    } else {
+      fetch('/api/dev/reset-round', { method: 'POST' });
+    }
+  };
+
+  const handleToggleAutoStart = (enabled: boolean) => {
+    setAutoStart(enabled);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'DEV_SET_AUTO_START', autoStart: enabled }));
+    } else {
+      fetch('/api/dev/auto-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+    }
+  };
 
   // WebSocket Ref
   const wsRef = useRef<WebSocket | null>(null);
@@ -107,14 +169,23 @@ export default function App() {
 
           if (data.type === 'INIT_STATE') {
             setRoundState(data.state);
-            if (data.history) setHistory(data.history);
+            if (data.history) {
+              setHistory(data.history);
+              try { localStorage.setItem('arena_history', JSON.stringify(data.history)); } catch (e) {}
+            }
           } else if (data.type === 'ROUND_STATE') {
             setRoundState(data.state);
+            if (data.history) {
+              setHistory(data.history);
+              try { localStorage.setItem('arena_history', JSON.stringify(data.history)); } catch (e) {}
+            }
 
             // Handle transition to celebration
             if (data.state.status === 'WINNER_CELEBRATION' && prevStatusRef.current !== 'WINNER_CELEBRATION') {
               sound.playVictory();
-              setShowVictoryModal(true);
+              setTimeout(() => {
+                setShowVictoryModal(true);
+              }, 400);
 
               // If current user is the winner, credit payout to balance and add won relics
               if (data.state.winner && data.state.winner.playerId === user.id) {
@@ -271,6 +342,18 @@ export default function App() {
               onOpenRelicPicker={() => setShowRelicPicker(true)}
               onRemoveRelic={handleRemoveRelic}
               onPlaceBet={handlePlaceBet}
+              onStartRound={handleStartRound}
+            />
+
+            {/* Development Toolbar: Add Random Players & Round Controls */}
+            <DevControls
+              roundState={roundState}
+              onAddRandomPlayer={handleAddRandomPlayer}
+              onStartRound={handleStartRound}
+              onRollNow={handleRollNow}
+              onResetRound={handleResetRound}
+              autoStart={autoStart}
+              onToggleAutoStart={handleToggleAutoStart}
             />
 
             {/* Expandable Player Roster */}
