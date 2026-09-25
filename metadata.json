@@ -1,0 +1,7 @@
+{
+  "name": "Provably Fair 2D Territory Arena",
+  "description": "Real-time multiplayer jackpot pot arena with dynamic 2D territory slicing, provably fair cryptographic RNG, cinematic camera zooms, and AI commentary.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
