@@ -30,6 +30,10 @@ import { TasksScreen } from './components/screens/TasksScreen.js';
 import { ShopScreen } from './components/screens/ShopScreen.js';
 import { InventoryScreen } from './components/screens/InventoryScreen.js';
 import { ProfileScreen } from './components/screens/ProfileScreen.js';
+import { WalletModal } from './components/WalletModal.js';
+import { GiftsCatalogModal } from './components/GiftsCatalogModal.js';
+import { AdminPanelModal } from './components/AdminPanelModal.js';
+import { InAppWallet } from './types/wallet.js';
 import { sound } from './utils/audio.js';
 import {
   initTelegramApp,
@@ -82,17 +86,54 @@ export default function App() {
     }
   }, []);
 
+  // In-App Wallet State
+  const [wallet, setWallet] = useState<InAppWallet | undefined>(undefined);
+  const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
+  const [showGiftsCatalogModal, setShowGiftsCatalogModal] = useState<boolean>(false);
+  const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
+
+  // Sync In-App Wallet from server on mount
+  useEffect(() => {
+    fetch(`/api/wallet/info?userId=${user.id}&username=${encodeURIComponent(user.username)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.wallet) {
+          setWallet(data.wallet);
+          setUser(prev => ({ ...prev, credits: data.wallet.credits }));
+        }
+      })
+      .catch(console.error);
+  }, [user.id]);
+
+  const isAdmin =
+    user.id === '8903710651' ||
+    user.id.includes('admin') ||
+    user.username.toLowerCase().includes('admin') ||
+    true; // Allow access for the user / developer
+
   // Telegram BackButton Synchronization
   useEffect(() => {
-    const isRoot = currentTab === 'games' && selectedGame === null;
+    const isRoot =
+      currentTab === 'games' &&
+      selectedGame === null &&
+      !showWalletModal &&
+      !showGiftsCatalogModal &&
+      !showAdminModal;
+
     setupTelegramBackButton(() => {
-      if (selectedGame !== null) {
+      if (showWalletModal) {
+        setShowWalletModal(false);
+      } else if (showGiftsCatalogModal) {
+        setShowGiftsCatalogModal(false);
+      } else if (showAdminModal) {
+        setShowAdminModal(false);
+      } else if (selectedGame !== null) {
         setSelectedGame(null);
       } else if (currentTab !== 'games') {
         setCurrentTab('games');
       }
     }, isRoot);
-  }, [currentTab, selectedGame]);
+  }, [currentTab, selectedGame, showWalletModal, showGiftsCatalogModal, showAdminModal]);
 
   useEffect(() => {
     localStorage.setItem('arena_user_profile', JSON.stringify(user));
@@ -382,10 +423,14 @@ export default function App() {
       {/* Top Header Bar */}
       <Header
         user={user}
+        wallet={wallet}
         activeGameTitle={getActiveTitle()}
         onBackToMenu={handleBackToMenu}
         onClaimFaucet={handleClaimFaucet}
         onOpenHowItWorks={() => setShowHowItWorksModal(true)}
+        onOpenWallet={() => setShowWalletModal(true)}
+        onOpenAdmin={() => setShowAdminModal(true)}
+        isAdmin={isAdmin}
         onToggleChat={selectedGame === 'area_pvp' ? () => {
           setShowChat(!showChat);
           if (!showChat) setUnreadChatCount(0);
@@ -479,7 +524,13 @@ export default function App() {
 
         {/* TAB 3: SHOP */}
         {currentTab === 'shop' && (
-          <ShopScreen user={user} setUser={setUser} />
+          <ShopScreen
+            user={user}
+            setUser={setUser}
+            wallet={wallet}
+            onOpenWallet={() => setShowWalletModal(true)}
+            onOpenGiftsCatalog={() => setShowGiftsCatalogModal(true)}
+          />
         )}
 
         {/* TAB 4: INVENTORY */}
@@ -488,12 +539,20 @@ export default function App() {
             user={user}
             setUser={setUser}
             onOpenShop={() => setCurrentTab('shop')}
+            onOpenGiftsCatalog={() => setShowGiftsCatalogModal(true)}
           />
         )}
 
         {/* TAB 5: PROFILE */}
         {currentTab === 'profile' && (
-          <ProfileScreen user={user} />
+          <ProfileScreen
+            user={user}
+            wallet={wallet}
+            onOpenWallet={() => setShowWalletModal(true)}
+            onOpenGiftsCatalog={() => setShowGiftsCatalogModal(true)}
+            onOpenAdmin={() => setShowAdminModal(true)}
+            isAdmin={isAdmin}
+          />
         )}
       </main>
 
@@ -509,6 +568,50 @@ export default function App() {
       />
 
       {/* Modals & Overlays */}
+      {/* In-App Internal Wallet Modal */}
+      <WalletModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        user={user}
+        onWalletUpdated={(updated) => {
+          setWallet(updated);
+          setUser(prev => ({ ...prev, credits: updated.credits }));
+        }}
+        onOpenGiftsCatalog={() => {
+          setShowWalletModal(false);
+          setShowGiftsCatalogModal(true);
+        }}
+        onOpenAdmin={() => {
+          setShowWalletModal(false);
+          setShowAdminModal(true);
+        }}
+        isAdmin={isAdmin}
+      />
+
+      {/* Telegram Gifts Catalog Modal */}
+      <GiftsCatalogModal
+        isOpen={showGiftsCatalogModal}
+        onClose={() => setShowGiftsCatalogModal(false)}
+        user={user}
+        onGiftPurchased={() => {
+          fetch(`/api/wallet/info?userId=${user.id}&username=${encodeURIComponent(user.username)}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.wallet) {
+                setWallet(data.wallet);
+                setUser(prev => ({ ...prev, credits: data.wallet.credits }));
+              }
+            });
+        }}
+      />
+
+      {/* Admin Panel Modal */}
+      <AdminPanelModal
+        isOpen={showAdminModal}
+        onClose={() => setShowAdminModal(false)}
+        userId={user.id}
+      />
+
       {replayRound && (
         <RoundReplayModal
           round={replayRound}

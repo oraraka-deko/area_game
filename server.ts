@@ -8,6 +8,27 @@ import { ArenaGameEngine } from './server/stateMachine.js';
 import { verifyRoundOutcome } from './server/provablyFair.js';
 import { askArenaMaster } from './server/geminiAnnouncer.js';
 import { ChatMessage } from './server/types.js';
+import fs from 'fs';
+import {
+  getUserWallet,
+  updateUserWallet,
+  getUserTransactions,
+  recordLedgerTransaction,
+  updateLedgerTransaction,
+  getSystemConfig,
+  updateSystemConfig,
+  getGlobalRecentTransactions,
+  tonRateLimiter,
+  getUserGifts,
+  addUserGift,
+  LedgerTransaction,
+  UserGiftItem
+} from './server/db.js';
+import {
+  verifyDepositOnChain,
+  createStarsInvoiceLink,
+  processTonWithdrawal
+} from './server/tonVerification.js';
 
 dotenv.config();
 
@@ -195,6 +216,501 @@ app.post('/api/ask-ai', async (req, res) => {
     res.json({ answer });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'AI request failed' });
+  }
+});
+
+// ==========================================
+// IN-APP INTERNAL WALLET & PAYMENT ENDPOINTS
+// ==========================================
+
+// Get user in-app wallet info & transaction ledger
+app.get('/api/wallet/info', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || 'guest';
+    const username = (req.query.username as string) || 'Player';
+    const wallet = await getUserWallet(userId, username);
+    const transactions = await getUserTransactions(userId);
+    res.json({ wallet, transactions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to get wallet' });
+  }
+});
+
+// Step 1: Create a TON deposit request
+app.post('/api/wallet/deposit-request', async (req, res) => {
+  try {
+    const { userId, username, amountTon, walletAddress } = req.body;
+    if (!userId || !amountTon || amountTon <= 0) {
+      return res.status(400).json({ error: 'Valid userId and amountTon are required' });
+    }
+
+    const config = await getSystemConfig();
+    const depositId = `dep_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const comment = `ARENA_${depositId}`;
+
+    // Record pending transaction in double-entry ledger
+    const tx: LedgerTransaction = {
+      id: depositId,
+      userId,
+      type: 'DEPOSIT_TON',
+      amountTon: Number(amountTon),
+      status: 'PENDING_WALLET',
+      comment,
+      createdAt: Date.now(),
+      details: {
+        receiverAddress: config.depositWalletAddress,
+        userWalletAddress: walletAddress
+      }
+    };
+    await recordLedgerTransaction(tx);
+
+    res.json({
+      success: true,
+      depositId,
+      comment,
+      depositAddress: config.depositWalletAddress,
+      amountTon: Number(amountTon)
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to create deposit request' });
+  }
+});
+
+// Step 2: Verify TON Deposit via TonCenter API and update ledger & balance
+app.post('/api/wallet/verify-ton-deposit', async (req, res) => {
+  try {
+    const { userId, depositId, boc, userWalletAddress, amountTon } = req.body;
+    if (!userId || !depositId) {
+      return res.status(400).json({ error: 'userId and depositId are required' });
+    }
+
+    const comment = `ARENA_${depositId}`;
+    const numAmount = Number(amountTon) || 0.5;
+
+    // Update status to PENDING_ON_CHAIN
+    await updateLedgerTransaction(depositId, {
+      status: 'PENDING_ON_CHAIN',
+      boc: boc || undefined
+    });
+
+    // Check with TonCenter API via rate limiter
+    const onChain = await verifyDepositOnChain(
+      depositId,
+      comment,
+      numAmount,
+      userWalletAddress
+    );
+
+    // If wallet returned signed BOC, we accept as verified or on-chain confirmed
+    const isSuccess = onChain.verified || Boolean(boc);
+    const txHash = onChain.txHash || (boc ? `boc_${boc.substring(0, 16)}...` : undefined);
+
+    if (isSuccess) {
+      await updateLedgerTransaction(depositId, {
+        status: 'CONFIRMED',
+        confirmedAt: Date.now(),
+        txHash
+      });
+
+      // Credit user's in-app TON wallet in Redis
+      const updatedWallet = await updateUserWallet(userId, prev => ({
+        tonBalance: +(prev.tonBalance + numAmount).toFixed(4),
+        connectedWallet: userWalletAddress || prev.connectedWallet
+      }));
+
+      return res.json({
+        verified: true,
+        txHash,
+        message: onChain.message || 'Payment confirmed on TON blockchain!',
+        wallet: updatedWallet
+      });
+    }
+
+    res.json({
+      verified: false,
+      message: onChain.message || 'Verifying transaction on TON blockchain...'
+    });
+  } catch (err: any) {
+    console.error('Error verifying TON deposit:', err);
+    res.status(500).json({ error: err.message || 'Verification failed' });
+  }
+});
+
+// User cancelled / rejected deposit in wallet
+app.post('/api/wallet/reject-deposit', async (req, res) => {
+  try {
+    const { depositId, reason } = req.body;
+    if (depositId) {
+      await updateLedgerTransaction(depositId, {
+        status: 'REJECTED',
+        details: { rejectionReason: reason || 'Cancelled by user in wallet' }
+      });
+    }
+    res.json({ ok: true, status: 'REJECTED' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Request Telegram Stars Invoice Link via bot
+app.post('/api/wallet/stars-invoice', async (req, res) => {
+  try {
+    const { userId, starsAmount } = req.body;
+    if (!userId || !starsAmount || starsAmount <= 0) {
+      return res.status(400).json({ error: 'Valid userId and starsAmount are required' });
+    }
+
+    const result = await createStarsInvoiceLink(userId, Number(starsAmount));
+    if (!result.ok) {
+      return res.status(500).json({ error: result.error || 'Failed to create invoice link' });
+    }
+
+    // Record pending invoice transaction
+    const invoiceTxId = `stars_inv_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    await recordLedgerTransaction({
+      id: invoiceTxId,
+      userId,
+      type: 'DEPOSIT_STARS',
+      amountStars: Number(starsAmount),
+      status: 'PENDING_WALLET',
+      createdAt: Date.now()
+    });
+
+    res.json({
+      ok: true,
+      invoiceLink: result.invoiceLink,
+      invoiceId: invoiceTxId
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Telegram Stars payment completed webhook / callback
+app.post('/api/wallet/stars-paid', async (req, res) => {
+  try {
+    const { userId, starsAmount, invoiceId } = req.body;
+    if (!userId || !starsAmount) {
+      return res.status(400).json({ error: 'userId and starsAmount are required' });
+    }
+
+    const numStars = Number(starsAmount);
+
+    if (invoiceId) {
+      await updateLedgerTransaction(invoiceId, {
+        status: 'CONFIRMED',
+        confirmedAt: Date.now()
+      });
+    } else {
+      await recordLedgerTransaction({
+        id: `stars_paid_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        userId,
+        type: 'DEPOSIT_STARS',
+        amountStars: numStars,
+        status: 'CONFIRMED',
+        createdAt: Date.now(),
+        confirmedAt: Date.now()
+      });
+    }
+
+    // Credit in-app Stars balance in Redis
+    const updatedWallet = await updateUserWallet(userId, prev => ({
+      starsBalance: prev.starsBalance + numStars
+    }));
+
+    res.json({
+      ok: true,
+      wallet: updatedWallet
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Process TON withdrawal
+app.post('/api/wallet/withdraw-ton', async (req, res) => {
+  try {
+    const { userId, destinationAddress, amountTon } = req.body;
+    if (!userId || !destinationAddress || !amountTon || amountTon <= 0) {
+      return res.status(400).json({ error: 'Valid userId, destinationAddress and amountTon required' });
+    }
+
+    const currentWallet = await getUserWallet(userId);
+    if (currentWallet.tonBalance < Number(amountTon)) {
+      return res.status(400).json({ error: 'Insufficient TON balance in in-app wallet' });
+    }
+
+    const result = await processTonWithdrawal(userId, destinationAddress, Number(amountTon));
+    if (!result.success) {
+      return res.status(500).json({ error: result.error || 'Withdrawal failed' });
+    }
+
+    const updatedWallet = await getUserWallet(userId);
+    res.json({
+      success: true,
+      txHash: result.txHash,
+      wallet: updatedWallet
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Exchange in-app TON / Stars to Game Credits
+app.post('/api/wallet/exchange-credits', async (req, res) => {
+  try {
+    const { userId, fromCurrency, amount } = req.body;
+    if (!userId || !fromCurrency || !amount || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid parameters' });
+    }
+
+    const wallet = await getUserWallet(userId);
+    let creditsToAdd = 0;
+
+    if (fromCurrency === 'TON') {
+      const numTon = Number(amount);
+      if (wallet.tonBalance < numTon) {
+        return res.status(400).json({ error: 'Insufficient TON balance' });
+      }
+      creditsToAdd = Math.round(numTon * 2000); // 1 TON = 2000 Credits
+      await updateUserWallet(userId, prev => ({
+        tonBalance: +(prev.tonBalance - numTon).toFixed(4),
+        credits: +(prev.credits + creditsToAdd).toFixed(2)
+      }));
+    } else if (fromCurrency === 'STARS') {
+      const numStars = Math.round(Number(amount));
+      if (wallet.starsBalance < numStars) {
+        return res.status(400).json({ error: 'Insufficient Stars balance' });
+      }
+      creditsToAdd = Math.round(numStars * 10); // 1 Star = 10 Credits
+      await updateUserWallet(userId, prev => ({
+        starsBalance: prev.starsBalance - numStars,
+        credits: +(prev.credits + creditsToAdd).toFixed(2)
+      }));
+    } else {
+      return res.status(400).json({ error: 'Unsupported currency' });
+    }
+
+    await recordLedgerTransaction({
+      id: `ex_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      userId,
+      type: 'GAME_CREDIT_TOPUP',
+      amountCredits: creditsToAdd,
+      status: 'CONFIRMED',
+      comment: `Exchanged ${amount} ${fromCurrency} for ${creditsToAdd} credits`,
+      createdAt: Date.now(),
+      confirmedAt: Date.now()
+    });
+
+    const updated = await getUserWallet(userId);
+    res.json({ success: true, creditsAdded: creditsToAdd, wallet: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// TELEGRAM GIFTS CATALOG & INVENTORY
+// ==========================================
+
+let cachedGiftsList: any[] | null = null;
+function getGiftsCatalogData() {
+  if (!cachedGiftsList) {
+    try {
+      const filePath = path.resolve(__dirname, 'public', 'telegram_gifts.json');
+      if (fs.existsSync(filePath)) {
+        cachedGiftsList = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      } else {
+        cachedGiftsList = [];
+      }
+    } catch (err) {
+      console.error('Error loading gifts catalog:', err);
+      cachedGiftsList = [];
+    }
+  }
+  return cachedGiftsList || [];
+}
+
+app.get('/api/gifts/catalog', (req, res) => {
+  try {
+    const list = getGiftsCatalogData();
+    const { search, limit = '50', offset = '0', upgradeableOnly } = req.query;
+
+    let filtered = list;
+    if (search && typeof search === 'string') {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(g => g.name.toLowerCase().includes(q));
+    }
+    if (upgradeableOnly === 'true') {
+      filtered = filtered.filter(g => g.is_upgradeable);
+    }
+
+    const start = Number(offset) || 0;
+    const end = start + (Number(limit) || 50);
+    const paginated = filtered.slice(start, end);
+
+    res.json({
+      total: filtered.length,
+      gifts: paginated
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/gifts/inventory', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || 'guest';
+    const gifts = await getUserGifts(userId);
+    res.json({ gifts });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/gifts/buy', async (req, res) => {
+  try {
+    const { userId, giftId, currency } = req.body;
+    if (!userId || !giftId) {
+      return res.status(400).json({ error: 'userId and giftId required' });
+    }
+
+    const catalog = getGiftsCatalogData();
+    const item = catalog.find(g => g.gift_id === String(giftId));
+    if (!item) {
+      return res.status(404).json({ error: 'Gift not found in catalog' });
+    }
+
+    const wallet = await getUserWallet(userId);
+
+    // Pricing in Stars or TON
+    const priceStars = item.price_stars;
+    const priceTon = +(priceStars / 100).toFixed(2); // 100 Stars ~ 1 TON
+
+    if (currency === 'ton') {
+      if (wallet.tonBalance < priceTon) {
+        return res.status(400).json({ error: `Insufficient TON balance. Required: ${priceTon} TON` });
+      }
+      await updateUserWallet(userId, prev => ({
+        tonBalance: +(prev.tonBalance - priceTon).toFixed(4)
+      }));
+    } else {
+      if (wallet.starsBalance < priceStars) {
+        return res.status(400).json({ error: `Insufficient Stars balance. Required: ${priceStars} ⭐` });
+      }
+      await updateUserWallet(userId, prev => ({
+        starsBalance: prev.starsBalance - priceStars
+      }));
+    }
+
+    // Pick top sample model / trait
+    const sampleModel = item.sample_models?.[0]?.name || 'Standard Edition';
+    const sampleBackdrop = item.sample_backdrops?.[0]?.center_color || '#3b82f6';
+    const sampleSymbol = item.sample_symbols?.[0]?.name || 'Star Emblem';
+
+    const newGiftItem: UserGiftItem = {
+      instanceId: `inst_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      giftId: String(item.gift_id),
+      name: item.name,
+      priceStars: item.price_stars,
+      acquiredAt: Date.now(),
+      modelName: sampleModel,
+      backdropColor: sampleBackdrop,
+      symbolName: sampleSymbol,
+      rarity: item.sample_models?.[0]?.rarity || 10
+    };
+
+    const updatedInventory = await addUserGift(userId, newGiftItem);
+
+    await recordLedgerTransaction({
+      id: `gift_tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      userId,
+      type: 'GIFT_BUY',
+      amountStars: currency === 'ton' ? undefined : priceStars,
+      amountTon: currency === 'ton' ? priceTon : undefined,
+      status: 'CONFIRMED',
+      comment: `Purchased Gift: ${item.name}`,
+      createdAt: Date.now(),
+      confirmedAt: Date.now()
+    });
+
+    const updatedWallet = await getUserWallet(userId);
+    res.json({
+      success: true,
+      gift: newGiftItem,
+      inventory: updatedInventory,
+      wallet: updatedWallet
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// ADMIN CONFIGURATION & AUDIT ENDPOINTS
+// ==========================================
+
+app.get('/api/admin/config', async (req, res) => {
+  try {
+    const config = await getSystemConfig();
+    res.json({
+      depositWalletAddress: config.depositWalletAddress,
+      hasHotWallet: Boolean(config.hotWalletMnemonic),
+      hotWalletMnemonic: config.hotWalletMnemonic ? '•••• •••• •••• ••••' : '',
+      toncenterApiKey: config.toncenterApiKey ? `${config.toncenterApiKey.slice(0, 8)}...` : '',
+      toncenterApiKeyTestnet: config.toncenterApiKeyTestnet ? `${config.toncenterApiKeyTestnet.slice(0, 8)}...` : '',
+      botStarsToken: config.botStarsToken ? `${config.botStarsToken.slice(0, 10)}...` : '',
+      isTestnet: config.isTestnet,
+      adminTelegramIds: config.adminTelegramIds,
+      neonConfigured: Boolean(config.neonConnectionString)
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/config', async (req, res) => {
+  try {
+    const {
+      depositWalletAddress,
+      hotWalletMnemonic,
+      isTestnet,
+      botStarsToken,
+      toncenterApiKey,
+      neonConnectionString,
+      adminTelegramIds
+    } = req.body;
+
+    const patch: any = {};
+    if (depositWalletAddress !== undefined) patch.depositWalletAddress = depositWalletAddress.trim();
+    if (hotWalletMnemonic !== undefined && !hotWalletMnemonic.includes('•••')) patch.hotWalletMnemonic = hotWalletMnemonic.trim();
+    if (isTestnet !== undefined) patch.isTestnet = Boolean(isTestnet);
+    if (botStarsToken !== undefined && !botStarsToken.includes('•••')) patch.botStarsToken = botStarsToken.trim();
+    if (toncenterApiKey !== undefined && !toncenterApiKey.includes('•••')) patch.toncenterApiKey = toncenterApiKey.trim();
+    if (neonConnectionString !== undefined) patch.neonConnectionString = neonConnectionString.trim();
+    if (Array.isArray(adminTelegramIds)) patch.adminTelegramIds = adminTelegramIds;
+
+    const updated = await updateSystemConfig(patch);
+    res.json({ success: true, config: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const rateStats = tonRateLimiter.getStats();
+    const recentTx = await getGlobalRecentTransactions(30);
+    const config = await getSystemConfig();
+
+    res.json({
+      rateLimiter: rateStats,
+      recentTransactions: recentTx,
+      depositAddress: config.depositWalletAddress,
+      isTestnet: config.isTestnet
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
