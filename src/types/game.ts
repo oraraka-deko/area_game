@@ -52,6 +52,7 @@ export interface RoundHistoryItem {
     winningTicket: number;
     winningValue: number;
   };
+  trajectory?: any;
   completedAt: number;
 }
 
@@ -80,6 +81,7 @@ export interface CurrentRoundState {
   winningTicket?: number;
   winningPlayerId?: string;
   winner?: RoundHistoryItem['winner'];
+  trajectory?: any;
   isBettingClosed?: boolean;
   minPlayersNeeded?: number;
 }

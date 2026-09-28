@@ -17,6 +17,8 @@ import {
 } from './provablyFair.js';
 import { BOT_PROFILES, BOT_CHAT_LINES, getRandomRelic } from './botSimulator.js';
 import { generateArenaCommentary } from './geminiAnnouncer.js';
+import { simulateAirHockeyFlight } from '../src/utils/physics.js';
+import { computeProportionalTerritories } from '../src/utils/slicing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -507,10 +509,26 @@ export class ArenaGameEngine {
       wonRelics: allWonRelics
     };
 
+    // Authoritative 2D Air Hockey Trajectory (guarantees identical playback in live match and video replay)
+    try {
+      const territories = computeProportionalTerritories(this.currentRound.bets, 460, 460);
+      const traj = simulateAirHockeyFlight(
+        this.currentRound.roundId,
+        winner.playerId,
+        territories,
+        460,
+        460,
+        8400
+      );
+      this.currentRound.trajectory = traj;
+    } catch (e) {
+      console.error('Error generating round trajectory:', e);
+    }
+
     // Broadcast resolving phase (client runs ball physics + camera zoom)
     this.broadcastState();
 
-    // Trigger resolution delay (7.5s)
+    // Trigger resolution delay (10s)
     setTimeout(() => {
       this.celebrateWinner(winningValue);
     }, this.RESOLUTION_MS);
@@ -522,7 +540,7 @@ export class ArenaGameEngine {
 
     const winner = this.currentRound.winner!;
 
-    // Save to history
+    // Save to history (including the exact deterministic trajectory)
     const historyItem: RoundHistoryItem = {
       roundId: this.currentRound.roundId,
       poolTier: this.currentRound.poolTier,
@@ -536,6 +554,7 @@ export class ArenaGameEngine {
         winningTicket: winningValue,
         winningValue
       },
+      trajectory: this.currentRound.trajectory,
       completedAt: Date.now()
     };
     this.history.unshift(historyItem);

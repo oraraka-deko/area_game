@@ -20,11 +20,26 @@ import { PrivateRoomModal } from './components/PrivateRoomModal.js';
 import { LiveChat } from './components/LiveChat.js';
 import { RoundReplayModal } from './components/RoundReplayModal.js';
 import { DevControls } from './components/DevControls.js';
+import { GameHub, GameId } from './components/GameHub.js';
+import { BottomNav, NavTab } from './components/BottomNav.js';
+import { MinesGame } from './components/games/MinesGame.js';
+import { CasesGame } from './components/games/CasesGame.js';
+import { CrushGame } from './components/games/CrushGame.js';
+import { BumpArenaGame } from './components/games/BumpArenaGame.js';
+import { TasksScreen } from './components/screens/TasksScreen.js';
+import { ShopScreen } from './components/screens/ShopScreen.js';
+import { InventoryScreen } from './components/screens/InventoryScreen.js';
+import { ProfileScreen } from './components/screens/ProfileScreen.js';
 import { sound } from './utils/audio.js';
+import {
+  initTelegramApp,
+  getTelegramUser,
+  setupTelegramBackButton
+} from './utils/telegram.js';
 
 // Default starting user profile
 const INITIAL_USER: UserProfile = {
-  id: 'usr_' + Math.random().toString(36).substring(2, 9),
+  id: 'usr_om3sgry',
   username: 'NeoGlitch',
   avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
   credits: 2500,
@@ -36,6 +51,10 @@ const INITIAL_USER: UserProfile = {
 };
 
 export default function App() {
+  // Navigation & Game State
+  const [currentTab, setCurrentTab] = useState<NavTab>('games');
+  const [selectedGame, setSelectedGame] = useState<GameId | null>(null);
+
   // User state
   const [user, setUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('arena_user_profile');
@@ -48,6 +67,32 @@ export default function App() {
     }
     return INITIAL_USER;
   });
+
+  // Telegram WebApp Initialization
+  useEffect(() => {
+    initTelegramApp();
+    const tgUser = getTelegramUser();
+    if (tgUser) {
+      setUser(prev => ({
+        ...prev,
+        id: tgUser.id,
+        username: tgUser.username,
+        avatar: tgUser.avatar
+      }));
+    }
+  }, []);
+
+  // Telegram BackButton Synchronization
+  useEffect(() => {
+    const isRoot = currentTab === 'games' && selectedGame === null;
+    setupTelegramBackButton(() => {
+      if (selectedGame !== null) {
+        setSelectedGame(null);
+      } else if (currentTab !== 'games') {
+        setCurrentTab('games');
+      }
+    }, isRoot);
+  }, [currentTab, selectedGame]);
 
   useEffect(() => {
     localStorage.setItem('arena_user_profile', JSON.stringify(user));
@@ -63,7 +108,7 @@ export default function App() {
     bets: [],
     timeRemainingMs: 20000,
     roundDurationMs: 20000,
-    resolutionDurationMs: 8500,
+    resolutionDurationMs: 10000,
     celebrationDurationMs: 6000,
     minPlayersNeeded: 1
   });
@@ -160,7 +205,8 @@ export default function App() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('Connected to Territory Arena WebSocket');
+        // Request initial state
+        ws.send(JSON.stringify({ type: 'GET_INIT' }));
       };
 
       ws.onmessage = (event) => {
@@ -185,7 +231,7 @@ export default function App() {
               sound.playVictory();
               setTimeout(() => {
                 setShowVictoryModal(true);
-              }, 400);
+              }, 1200);
 
               // If current user is the winner, credit payout to balance and add won relics
               if (data.state.winner && data.state.winner.playerId === user.id) {
@@ -210,9 +256,9 @@ export default function App() {
               isBettingClosed: data.isBettingClosed !== undefined ? data.isBettingClosed : prev.isBettingClosed
             }));
           } else if (data.type === 'CHAT_MESSAGE') {
-            setMessages(prev => [...prev.slice(-40), data.message]);
+            setMessages(prev => [...prev.slice(-99), data.message]);
             if (!showChat) {
-              setUnreadChatCount(prev => prev + 1);
+              setUnreadChatCount(count => count + 1);
             }
           }
         } catch (err) {
@@ -221,31 +267,41 @@ export default function App() {
       };
 
       ws.onclose = () => {
-        console.log('WS closed, reconnecting in 2s...');
         reconnectTimeout = setTimeout(connect, 2000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
       };
     };
 
     connect();
 
+    // Ping interval to keep connection alive
+    const pingInterval = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'PING' }));
+      }
+    }, 15000);
+
     return () => {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      clearInterval(pingInterval);
+      clearTimeout(reconnectTimeout);
       if (wsRef.current) wsRef.current.close();
     };
-  }, [user.id, showChat]);
+  }, []);
 
   // Faucet claim handler
   const handleClaimFaucet = () => {
     sound.playVictory();
     const newRelic: Relic = {
       id: 'rel_faucet_' + Date.now(),
-      name: 'Cobalt Core',
+      name: 'Arcane Shard',
       rarity: 'rare',
-      value: 300,
+      value: 120,
       icon: '💎',
       color: '#38bdf8'
     };
-
     setUser(prev => ({
       ...prev,
       credits: +(prev.credits + 500).toFixed(2),
@@ -253,21 +309,18 @@ export default function App() {
     }));
   };
 
-  // Place Bet
+  // Place Bet in Area PvP
   const handlePlaceBet = (creditAmount: number, relics: Relic[]) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    // Deduct credits & relics locally immediately
     setUser(prev => ({
       ...prev,
       credits: +(prev.credits - creditAmount).toFixed(2),
       inventory: prev.inventory.filter(item => !relics.some(r => r.id === item.id))
     }));
 
-    // Clear selected relics
     setSelectedRelics([]);
 
-    // Send to WebSocket
     wsRef.current.send(JSON.stringify({
       type: 'PLACE_BET',
       playerId: user.id,
@@ -279,7 +332,6 @@ export default function App() {
     }));
   };
 
-  // Toggle Relic Selection
   const handleToggleRelic = (relic: Relic) => {
     setSelectedRelics(prev => {
       const exists = prev.some(r => r.id === relic.id);
@@ -295,7 +347,6 @@ export default function App() {
     setSelectedRelics(prev => prev.filter(r => r.id !== id));
   };
 
-  // Chat message sending
   const handleSendMessage = (text: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({
@@ -306,82 +357,156 @@ export default function App() {
     }));
   };
 
+  const getActiveTitle = () => {
+    if (currentTab !== 'games') {
+      if (currentTab === 'tasks') return 'Tasks';
+      if (currentTab === 'shop') return 'Shop';
+      if (currentTab === 'inventory') return 'Inventory';
+      if (currentTab === 'profile') return 'Profile';
+    }
+    if (selectedGame === 'area_pvp') return 'Area PvP';
+    if (selectedGame === 'mines_pve') return 'Mines';
+    if (selectedGame === 'cases') return 'Cases';
+    if (selectedGame === 'crush_pve') return 'Crush';
+    if (selectedGame === 'bump_arena') return 'Bump Arena';
+    return null;
+  };
+
+  const handleBackToMenu = () => {
+    setSelectedGame(null);
+    setCurrentTab('games');
+  };
+
   return (
-    <div className="min-h-screen bg-[#0c0d14] text-white flex flex-col font-sans selection:bg-[#ccff00] selection:text-black">
+    <div className="min-h-screen bg-[#0b0c14] text-white flex flex-col font-sans selection:bg-[#ccff00] selection:text-black w-full max-w-full overflow-x-hidden">
       {/* Top Header Bar */}
       <Header
         user={user}
+        activeGameTitle={getActiveTitle()}
+        onBackToMenu={handleBackToMenu}
         onClaimFaucet={handleClaimFaucet}
         onOpenHowItWorks={() => setShowHowItWorksModal(true)}
-        onToggleChat={() => {
+        onToggleChat={selectedGame === 'area_pvp' ? () => {
           setShowChat(!showChat);
           if (!showChat) setUnreadChatCount(0);
-        }}
+        } : undefined}
         unreadChatCount={unreadChatCount}
       />
 
-      {/* Main Content Arena */}
-      <main className="flex-1 w-full max-w-md sm:max-w-lg mx-auto px-3 py-2.5 flex flex-col gap-3">
-        {/* Pool Header & Tabs */}
-        <PoolInfo
-          roundState={roundState}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-        />
-
-        {activeTab === 'current' ? (
-          <>
-            {/* Center Dynamic 2D Territory Canvas */}
-            <TerritoryCanvas roundState={roundState} />
-
-            {/* Betting Controls */}
-            <BettingControls
-              roundState={roundState}
-              user={user}
-              selectedRelics={selectedRelics}
-              onOpenRelicPicker={() => setShowRelicPicker(true)}
-              onRemoveRelic={handleRemoveRelic}
-              onPlaceBet={handlePlaceBet}
-              onStartRound={handleStartRound}
+      {/* Main Content Area */}
+      <main className="flex-1 w-full max-w-md mx-auto px-2 xs:px-3 py-2.5 flex flex-col gap-3 pb-24 overflow-x-hidden">
+        {/* TAB 1: GAMES */}
+        {currentTab === 'games' && (
+          selectedGame === null ? (
+            /* Main Menu with Game Posters */
+            <GameHub
+              onSelectGame={(id) => setSelectedGame(id)}
+              activePot={roundState.totalPool || 1250}
+              onlinePlayers={roundState.bets.length + 142}
             />
+          ) : selectedGame === 'area_pvp' ? (
+            /* Area PvP Air Hockey Showdown */
+            <>
+              <PoolInfo
+                roundState={roundState}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+              />
 
-            {/* Development Toolbar: Add Random Players & Round Controls */}
-            <DevControls
-              roundState={roundState}
-              onAddRandomPlayer={handleAddRandomPlayer}
-              onStartRound={handleStartRound}
-              onRollNow={handleRollNow}
-              onResetRound={handleResetRound}
-              autoStart={autoStart}
-              onToggleAutoStart={handleToggleAutoStart}
-            />
+              {activeTab === 'current' ? (
+                <>
+                  <TerritoryCanvas roundState={roundState} />
 
-            {/* Expandable Player Roster */}
-            <PlayerRoster
-              bets={roundState.bets}
-              serverSeedHash={roundState.serverSeedHash}
-              poolTier={roundState.poolTier}
-              onCreatePrivateRoom={() => setShowPrivateRoomModal(true)}
-              onOpenProvablyFairModal={() => {
-                setHistoricalInspectRound(null);
-                setShowProvablyFairModal(true);
-              }}
-            />
-          </>
-        ) : (
-          /* Past Rounds History Tab */
-          <HistoryTab
-            history={history}
-            onInspectRound={(round) => {
-              setHistoricalInspectRound(round);
-              setShowProvablyFairModal(true);
-            }}
-            onWatchReplay={(round) => {
-              setReplayRound(round);
-            }}
+                  <BettingControls
+                    roundState={roundState}
+                    user={user}
+                    selectedRelics={selectedRelics}
+                    onOpenRelicPicker={() => setShowRelicPicker(true)}
+                    onRemoveRelic={handleRemoveRelic}
+                    onPlaceBet={handlePlaceBet}
+                    onStartRound={handleStartRound}
+                  />
+
+                  <DevControls
+                    roundState={roundState}
+                    onAddRandomPlayer={handleAddRandomPlayer}
+                    onStartRound={handleStartRound}
+                    onRollNow={handleRollNow}
+                    onResetRound={handleResetRound}
+                    autoStart={autoStart}
+                    onToggleAutoStart={handleToggleAutoStart}
+                  />
+
+                  <PlayerRoster
+                    bets={roundState.bets}
+                    serverSeedHash={roundState.serverSeedHash}
+                    poolTier={roundState.poolTier}
+                    onCreatePrivateRoom={() => setShowPrivateRoomModal(true)}
+                    onOpenProvablyFairModal={() => {
+                      setHistoricalInspectRound(null);
+                      setShowProvablyFairModal(true);
+                    }}
+                  />
+                </>
+              ) : (
+                <HistoryTab
+                  history={history}
+                  onInspectRound={(round) => {
+                    setHistoricalInspectRound(round);
+                    setShowProvablyFairModal(true);
+                  }}
+                  onWatchReplay={(round) => {
+                    setReplayRound(round);
+                  }}
+                />
+              )}
+            </>
+          ) : selectedGame === 'mines_pve' ? (
+            <MinesGame user={user} setUser={setUser} onBack={handleBackToMenu} />
+          ) : selectedGame === 'cases' ? (
+            <CasesGame user={user} setUser={setUser} onBack={handleBackToMenu} />
+          ) : selectedGame === 'crush_pve' ? (
+            <CrushGame user={user} setUser={setUser} onBack={handleBackToMenu} />
+          ) : (
+            <BumpArenaGame user={user} setUser={setUser} onBack={handleBackToMenu} />
+          )
+        )}
+
+        {/* TAB 2: TASKS */}
+        {currentTab === 'tasks' && (
+          <TasksScreen user={user} setUser={setUser} />
+        )}
+
+        {/* TAB 3: SHOP */}
+        {currentTab === 'shop' && (
+          <ShopScreen user={user} setUser={setUser} />
+        )}
+
+        {/* TAB 4: INVENTORY */}
+        {currentTab === 'inventory' && (
+          <InventoryScreen
+            user={user}
+            setUser={setUser}
+            onOpenShop={() => setCurrentTab('shop')}
           />
         )}
+
+        {/* TAB 5: PROFILE */}
+        {currentTab === 'profile' && (
+          <ProfileScreen user={user} />
+        )}
       </main>
+
+      {/* Floating Bottom Navigation Bar */}
+      <BottomNav
+        currentTab={currentTab}
+        onSelectTab={(tab) => {
+          setCurrentTab(tab);
+          setSelectedGame(null);
+        }}
+        inventoryCount={user.inventory.length}
+        availableTasksCount={2}
+      />
 
       {/* Modals & Overlays */}
       {replayRound && (

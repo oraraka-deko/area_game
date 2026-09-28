@@ -182,3 +182,98 @@ export function findPlayerAtPoint(
   }
   return closest;
 }
+
+export interface SeamReviewInfo {
+  hasSplitter: boolean;
+  seamType: 'vertical' | 'horizontal';
+  seamCoord: number;
+  seamStart: number;
+  seamEnd: number;
+  distance: number;
+  winnerUsername: string;
+  winnerColor: string;
+  rivalUsername: string;
+  rivalColor: string;
+}
+
+/**
+ * Finds the nearest internal splitter line (boundary seam) between the winner's
+ * territory and an adjacent opponent for the sports TV VAR review.
+ */
+export function findNearestSplitterLine(
+  puckX: number,
+  puckY: number,
+  winnerId: string,
+  territories: WatertightPolygon[]
+): SeamReviewInfo | null {
+  if (!territories || territories.length < 2) return null;
+
+  const winnerPoly = territories.find(t => t.playerId === winnerId) || territories[0];
+  let closestSeam: SeamReviewInfo | null = null;
+  let minDistance = Infinity;
+
+  for (const opp of territories) {
+    if (opp.playerId === winnerPoly.playerId || opp.playerId === 'neutral') continue;
+
+    // Check shared vertical boundary
+    const isSharedLeft = Math.abs(winnerPoly.x - (opp.x + opp.w)) < 3;
+    const isSharedRight = Math.abs((winnerPoly.x + winnerPoly.w) - opp.x) < 3;
+
+    if (isSharedLeft || isSharedRight) {
+      const seamX = isSharedLeft ? winnerPoly.x : (winnerPoly.x + winnerPoly.w);
+      const overlapStart = Math.max(winnerPoly.y, opp.y);
+      const overlapEnd = Math.min(winnerPoly.y + winnerPoly.h, opp.y + opp.h);
+
+      if (overlapEnd > overlapStart) {
+        const dist = Math.abs(puckX - seamX);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestSeam = {
+            hasSplitter: true,
+            seamType: 'vertical',
+            seamCoord: seamX,
+            seamStart: overlapStart,
+            seamEnd: overlapEnd,
+            distance: Math.round(dist * 10) / 10,
+            winnerUsername: winnerPoly.username,
+            winnerColor: winnerPoly.color,
+            rivalUsername: opp.username,
+            rivalColor: opp.color
+          };
+        }
+      }
+    }
+
+    // Check shared horizontal boundary
+    const isSharedTop = Math.abs(winnerPoly.y - (opp.y + opp.h)) < 3;
+    const isSharedBottom = Math.abs((winnerPoly.y + winnerPoly.h) - opp.y) < 3;
+
+    if (isSharedTop || isSharedBottom) {
+      const seamY = isSharedTop ? winnerPoly.y : (winnerPoly.y + winnerPoly.h);
+      const overlapStart = Math.max(winnerPoly.x, opp.x);
+      const overlapEnd = Math.min(winnerPoly.x + winnerPoly.w, opp.x + opp.w);
+
+      if (overlapEnd > overlapStart) {
+        const dist = Math.abs(puckY - seamY);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestSeam = {
+            hasSplitter: true,
+            seamType: 'horizontal',
+            seamCoord: seamY,
+            seamStart: overlapStart,
+            seamEnd: overlapEnd,
+            distance: Math.round(dist * 10) / 10,
+            winnerUsername: winnerPoly.username,
+            winnerColor: winnerPoly.color,
+            rivalUsername: opp.username,
+            rivalColor: opp.color
+          };
+        }
+      }
+    }
+  }
+
+  return closestSeam;
+}
+
