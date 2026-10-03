@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Users, Sparkles, Flame, ShieldAlert, Award, ArrowRight } from 'lucide-react';
+import { Play, Users, Sparkles, Flame, ShieldAlert, Award, ArrowRight, Lock } from 'lucide-react';
 import { haptic } from '../utils/telegram.js';
 
 export type GameId = 'area_pvp' | 'mines_pve' | 'cases' | 'crush_pve' | 'bump_arena';
@@ -8,15 +8,30 @@ interface GameHubProps {
   onSelectGame: (gameId: GameId) => void;
   activePot?: number;
   onlinePlayers?: number;
+  enabledGames?: {
+    arena: boolean;
+    mines: boolean;
+    crush: boolean;
+    cases: boolean;
+    bumper: boolean;
+  };
 }
 
 export const GameHub: React.FC<GameHubProps> = ({
   onSelectGame,
-  activePot = 1250,
-  onlinePlayers = 168
+  activePot = 15.5,
+  onlinePlayers = 168,
+  enabledGames = {
+    arena: true,
+    mines: true,
+    crush: true,
+    cases: true,
+    bumper: true
+  }
 }) => {
   const games: {
     id: GameId;
+    gameKey: keyof typeof enabledGames;
     title: string;
     subtitle: string;
     tag: string;
@@ -32,23 +47,25 @@ export const GameHub: React.FC<GameHubProps> = ({
   }[] = [
     {
       id: 'area_pvp',
+      gameKey: 'arena',
       title: 'Area PvP',
       subtitle: 'Air Hockey Territory Slicing Arena',
       tag: '🔥 POPULAR • LIVE PVP',
-      tagColor: 'bg-[#ccff00]/20 text-[#ccff00] border-[#ccff00]/40',
+      tagColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
       isHot: true,
       isPvP: true,
       online: onlinePlayers,
-      statLabel: 'LIVE POT',
-      statValue: `${activePot.toFixed(0)} 🪙`,
+      statLabel: 'GAME TYPE',
+      statValue: '2D LIVE PVP',
       image: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop&q=80',
-      accentColor: '#ccff00',
-      borderGlow: 'hover:border-[#ccff00]/60 hover:shadow-[0_0_28px_rgba(204,255,0,0.25)]'
+      accentColor: '#06b6d4',
+      borderGlow: 'hover:border-cyan-500/60 hover:shadow-[0_0_28px_rgba(6,182,212,0.25)]'
     },
     {
       id: 'mines_pve',
+      gameKey: 'mines',
       title: 'Mines PvE',
-      subtitle: 'Uncover Diamonds & Multiply Winnings',
+      subtitle: 'Uncover Diamonds in TON or Stars',
       tag: '💎 UP TO 100x',
       tagColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
       online: 94,
@@ -60,6 +77,7 @@ export const GameHub: React.FC<GameHubProps> = ({
     },
     {
       id: 'cases',
+      gameKey: 'cases',
       title: 'Cases',
       subtitle: 'Unbox Cyber Crates & Rare Relics',
       tag: '🎁 LOOT CRATES',
@@ -73,6 +91,7 @@ export const GameHub: React.FC<GameHubProps> = ({
     },
     {
       id: 'crush_pve',
+      gameKey: 'crush',
       title: 'Crush PvE',
       subtitle: 'Rocket Curve Multiplier • Cash Out in Time',
       tag: '🚀 CRASH MULTIPLIER',
@@ -86,32 +105,39 @@ export const GameHub: React.FC<GameHubProps> = ({
     },
     {
       id: 'bump_arena',
+      gameKey: 'bumper',
       title: 'Bump Area PvP',
       subtitle: 'Sumo Puck Ring Out • Knockout Showdown',
       tag: '🥊 SUMO BUMPER PVP',
       tagColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
       online: 62,
-      statLabel: 'WINNER TAKES ALL',
-      statValue: '100% POT',
+      statLabel: 'GAME TYPE',
+      statValue: 'SUMO PVP BUMPER',
       image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
       accentColor: '#f59e0b',
       borderGlow: 'hover:border-amber-500/60 hover:shadow-[0_0_28px_rgba(245,158,11,0.25)]'
     }
   ];
 
-  const handleLaunchGame = (id: GameId) => {
+  const handleLaunchGame = (id: GameId, isEnabled: boolean) => {
+    if (!isEnabled) {
+      haptic.notification('warning');
+      return;
+    }
     haptic.impact('medium');
     onSelectGame(id);
   };
 
+  const isAreaEnabled = enabledGames.arena !== false;
+
   return (
     <div className="w-full max-w-md mx-auto flex flex-col gap-4 pb-4 px-3">
       {/* Featured Hero Banner: Area PvP */}
-      <div className="relative rounded-3xl overflow-hidden border border-[#ccff00]/40 bg-gradient-to-b from-[#182014] to-[#0d1017] shadow-xl p-5 flex flex-col gap-3">
+      <div className="relative rounded-3xl overflow-hidden border border-cyan-500/40 bg-gradient-to-b from-[#141a29] to-[#0d1017] shadow-xl p-5 flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-[#ccff00] text-black shadow-sm">
+          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-gradient-to-r from-cyan-400 to-blue-500 text-black shadow-sm">
             <Flame className="w-3.5 h-3.5 fill-current" />
-            <span>Featured Arena</span>
+            <span>Featured PvP Arena</span>
           </span>
 
           <div className="flex items-center gap-1.5 text-xs text-white/70 font-mono">
@@ -124,95 +150,119 @@ export const GameHub: React.FC<GameHubProps> = ({
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
             <span>Area PvP</span>
             <span className="text-xs px-2 py-0.5 rounded-md bg-white/10 text-white/80 font-mono font-normal">
-              100% Fair
+              Provably Fair
             </span>
           </h1>
           <p className="text-xs text-white/60 mt-0.5 leading-relaxed">
-            Dynamic 2D territory slicing air hockey showdown with real-time rigid body physics and VAR goal-line review!
+            Multiplayer 2D territory slicing arena with TON & Stars betting, 5% bot rake, and 1-minute refund protection.
           </p>
         </div>
 
         <div className="flex items-center justify-between pt-1">
-          <div>
-            <div className="text-[10px] text-white/40 font-mono uppercase tracking-wider">
-              Current Jackpot
-            </div>
-            <div className="text-xl font-black font-mono text-[#ccff00]">
-              {activePot.toFixed(2)} 🪙
-            </div>
+          <div className="flex items-center gap-1.5 text-xs font-mono text-cyan-300/90 bg-cyan-500/10 px-3 py-1.5 rounded-xl border border-cyan-500/20">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Multiplayer Slicing Battles</span>
           </div>
 
           <button
-            onClick={() => handleLaunchGame('area_pvp')}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#ccff00] hover:bg-[#b8e600] text-black font-black text-xs uppercase tracking-wider transition active:scale-95 shadow-md shadow-[#ccff00]/20"
+            onClick={() => handleLaunchGame('area_pvp', isAreaEnabled)}
+            disabled={!isAreaEnabled}
+            className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition active:scale-95 flex items-center gap-1.5 shadow-lg ${
+              isAreaEnabled
+                ? 'bg-gradient-to-r from-cyan-400 to-blue-500 hover:brightness-110 text-black shadow-cyan-400/25'
+                : 'bg-white/10 text-white/40 cursor-not-allowed'
+            }`}
           >
-            <Play className="w-4 h-4 fill-current ml-0.5" />
-            <span>Enter Match</span>
+            {isAreaEnabled ? (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Play Area</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-3.5 h-3.5" />
+                <span>Maintenance</span>
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Grid of Other Game Posters */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-black uppercase tracking-wider text-white/70 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Explore All Games (5)</span>
-          </span>
-          <span className="text-[10px] text-white/40 font-mono">Tap to Play</span>
+      {/* Arcade Games Grid */}
+      <div className="flex flex-col gap-2.5">
+        <div className="text-xs font-bold uppercase tracking-wider text-white/50 px-1">
+          Arcade & PvP Modes
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {games.map(game => (
-            <div
-              key={game.id}
-              onClick={() => handleLaunchGame(game.id)}
-              className={`group relative rounded-2xl overflow-hidden border border-white/10 bg-[#141624] transition-all duration-200 cursor-pointer active:scale-[0.98] ${game.borderGlow} flex flex-col justify-between`}
-            >
-              {/* Poster Image Backdrop with Overlay */}
-              <div className="relative h-28 w-full overflow-hidden">
-                <img
-                  src={game.image}
-                  alt={game.title}
-                  className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+          {games.map(g => {
+            const isEnabled = enabledGames[g.gameKey] !== false;
+
+            return (
+              <div
+                key={g.id}
+                onClick={() => handleLaunchGame(g.id, isEnabled)}
+                className={`group relative rounded-3xl bg-[#121524] border border-white/10 p-4 transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-lg ${
+                  isEnabled ? `${g.borderGlow} cursor-pointer active:scale-98` : 'opacity-60 cursor-not-allowed'
+                }`}
+              >
+                {/* Background Artwork Image */}
+                <div
+                  className="absolute inset-0 bg-cover bg-center opacity-15 group-hover:opacity-25 transition duration-500"
+                  style={{ backgroundImage: `url(${g.image})` }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#141624] via-[#141624]/60 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#121524] via-[#121524]/85 to-transparent" />
 
-                {/* Tag Badge */}
-                <div className="absolute top-2.5 left-2.5">
-                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg border backdrop-blur-md ${game.tagColor}`}>
-                    {game.tag}
+                <div className="relative z-10 flex items-start justify-between">
+                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border shadow-sm ${g.tagColor}`}>
+                    {g.tag}
                   </span>
+
+                  {!isEnabled ? (
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>Disabled</span>
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1 text-[10px] text-white/50 font-mono">
+                      <Users className="w-3 h-3" />
+                      <span>{g.online}</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Online Counter */}
-                <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-[10px] font-mono text-white/80">
-                  <Users className="w-3 h-3 text-emerald-400" />
-                  <span>{game.online}</span>
+                <div className="relative z-10 my-3">
+                  <h3 className="text-lg font-black text-white group-hover:text-cyan-300 transition">
+                    {g.title}
+                  </h3>
+                  <p className="text-[11px] text-white/60 line-clamp-1 mt-0.5 font-medium">
+                    {g.subtitle}
+                  </p>
+                </div>
+
+                <div className="relative z-10 flex items-center justify-between pt-2 border-t border-white/5">
+                  <div>
+                    <div className="text-[9px] text-white/40 font-mono uppercase tracking-wider">
+                      {g.statLabel}
+                    </div>
+                    <div className="text-xs font-black font-mono text-cyan-300">
+                      {g.statValue}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center transition shadow-md ${
+                      isEnabled
+                        ? 'bg-white/10 group-hover:bg-white text-white group-hover:text-black'
+                        : 'bg-white/5 text-white/30'
+                    }`}
+                  >
+                    {isEnabled ? <ArrowRight className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  </div>
                 </div>
               </div>
-
-              {/* Game Info Bottom */}
-              <div className="p-3.5 pt-1 flex flex-col gap-2">
-                <div>
-                  <div className="text-base font-extrabold text-white group-hover:text-[#ccff00] transition-colors flex items-center justify-between">
-                    <span>{game.title}</span>
-                    <ArrowRight className="w-4 h-4 text-white/40 group-hover:text-[#ccff00] group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                  <div className="text-[11px] text-white/50 line-clamp-1 mt-0.5">
-                    {game.subtitle}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px] font-mono">
-                  <span className="text-white/40">{game.statLabel}</span>
-                  <span className="font-bold text-white" style={{ color: game.accentColor }}>
-                    {game.statValue}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

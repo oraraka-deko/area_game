@@ -45,6 +45,11 @@ export interface TelegramGiftItem {
   sample_models: TelegramGiftTrait[];
   sample_backdrops: TelegramGiftTrait[];
   sample_symbols: TelegramGiftTrait[];
+  bg_center?: string;
+  bg_edge?: string;
+  top_model?: string;
+  floor_price_ton?: number;
+  floor_price_usd?: number;
 }
 
 export interface UserInventoryGift {

@@ -12,14 +12,17 @@ interface MinesGameProps {
 }
 
 export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) => {
+  const [currency, setCurrency] = useState<'ton' | 'stars'>('ton');
   const [mineCount, setMineCount] = useState<number>(3);
-  const [betAmount, setBetAmount] = useState<number>(50);
+  const [betAmount, setBetAmount] = useState<number>(0.2);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [revealed, setRevealed] = useState<boolean[]>(Array(25).fill(false));
   const [minePositions, setMinePositions] = useState<Set<number>>(new Set());
   const [gameOver, setGameOver] = useState<boolean>(false);
   const [won, setWon] = useState<boolean>(false);
   const [diamondsFound, setDiamondsFound] = useState<number>(0);
+
+  const currentBalance = currency === 'ton' ? (user.tonBalance || 0) : (user.starsBalance || 0);
 
   // Multiplier calculation based on revealed diamonds and mine count
   const calculateMultiplier = (revealedCount: number, mines: number) => {
@@ -32,17 +35,29 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
   };
 
   const currentMultiplier = calculateMultiplier(diamondsFound, mineCount);
-  const currentPayout = +(betAmount * currentMultiplier).toFixed(2);
+  const currentPayout = +(betAmount * currentMultiplier).toFixed(currency === 'ton' ? 4 : 0);
+
+  const handleCurrencyChange = (newCurr: 'ton' | 'stars') => {
+    if (isPlaying) return;
+    setCurrency(newCurr);
+    setBetAmount(newCurr === 'ton' ? 0.2 : 25);
+    haptic.selection();
+  };
 
   const handleStartGame = () => {
-    if (user.credits < betAmount) {
+    if (currentBalance < betAmount) {
       haptic.notification('error');
       sound.playBettingClosed();
       return;
     }
 
-    // Deduct bet
-    setUser(prev => ({ ...prev, credits: +(prev.credits - betAmount).toFixed(2) }));
+    // Deduct bet from chosen currency
+    if (currency === 'ton') {
+      setUser(prev => ({ ...prev, tonBalance: +(prev.tonBalance - betAmount).toFixed(4) }));
+    } else {
+      setUser(prev => ({ ...prev, starsBalance: Math.max(0, prev.starsBalance - Math.floor(betAmount)) }));
+    }
+
     sound.playBetPlaced();
     haptic.impact('medium');
 
@@ -81,11 +96,12 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
       recordGameOutcome({
         gameId: 'mines',
         userId: user.id,
+        currency,
         betAmount,
         payoutAmount: 0,
         multiplier: 0,
         status: 'LOSS',
-        gameDetails: { mineCount, diamondsFound }
+        gameDetails: { mineCount, diamondsFound, currency }
       });
     } else {
       // Diamond found!
@@ -105,7 +121,12 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
     if (!isPlaying || diamondsFound === 0 || gameOver) return;
 
     const payout = currentPayout;
-    setUser(prev => ({ ...prev, credits: +(prev.credits + payout).toFixed(2) }));
+    if (currency === 'ton') {
+      setUser(prev => ({ ...prev, tonBalance: +(prev.tonBalance + payout).toFixed(4) }));
+    } else {
+      setUser(prev => ({ ...prev, starsBalance: prev.starsBalance + Math.floor(payout) }));
+    }
+
     sound.playVictory();
     haptic.notification('success');
     setWon(true);
@@ -115,16 +136,20 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
     recordGameOutcome({
       gameId: 'mines',
       userId: user.id,
+      currency,
       betAmount,
       payoutAmount: payout,
       multiplier: currentMultiplier,
       status: 'WIN',
-      gameDetails: { mineCount, diamondsFound }
+      gameDetails: { mineCount, diamondsFound, currency }
     });
 
     // Reveal rest of board
     setRevealed(Array(25).fill(true));
   };
+
+  const tonPresets = [0.05, 0.1, 0.2, 0.5, 1.0];
+  const starsPresets = [10, 25, 50, 100, 250];
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col gap-4 pb-8 px-3">
@@ -139,9 +164,9 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-white/50 font-mono">Balance:</span>
-          <span className="text-sm font-black font-mono text-[#ccff00]">
-            {user.credits.toFixed(2)} 🪙
+          <span className="text-xs text-white/50 font-mono">In-App Balance:</span>
+          <span className="text-sm font-black font-mono text-cyan-300">
+            {currency === 'ton' ? `${(user.tonBalance || 0).toFixed(2)} TON` : `${(user.starsBalance || 0).toLocaleString()} ⭐`}
           </span>
         </div>
       </div>
@@ -151,86 +176,80 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
         {/* Title bar */}
         <div className="flex items-center justify-between border-b border-white/5 pb-3">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">💎</span>
+            <span className="text-2xl">💣</span>
             <div>
               <div className="text-base font-extrabold text-white">Mines PvE</div>
               <div className="text-[11px] text-white/50 font-mono">
-                {isPlaying ? `${diamondsFound} Diamonds Found • ${currentMultiplier}x` : 'Customizable Risk & Multipliers'}
+                {isPlaying ? `${diamondsFound} Diamonds Found • ${currentMultiplier}x` : 'Deposit & Bet in TON or Stars'}
               </div>
             </div>
           </div>
 
-          {isPlaying && (
-            <div className="text-right">
-              <div className="text-[10px] text-white/40 font-mono">Potential Payout</div>
-              <div className="text-base font-black font-mono text-cyan-400">
-                +{currentPayout.toFixed(2)} 🪙
-              </div>
+          {/* Currency Switcher */}
+          {!isPlaying && (
+            <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-xl border border-white/10">
+              <button
+                onClick={() => handleCurrencyChange('ton')}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
+                  currency === 'ton' ? 'bg-cyan-500 text-black shadow' : 'text-white/60 hover:text-white'
+                }`}
+              >
+                💎 TON
+              </button>
+              <button
+                onClick={() => handleCurrencyChange('stars')}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
+                  currency === 'stars' ? 'bg-amber-400 text-black shadow' : 'text-white/60 hover:text-white'
+                }`}
+              >
+                ⭐ Stars
+              </button>
             </div>
           )}
         </div>
 
-        {/* 5x5 Grid */}
+        {/* 5x5 Mine Grid */}
         <div className="grid grid-cols-5 gap-2 aspect-square w-full max-w-[340px] mx-auto">
-          {Array(25).fill(0).map((_, idx) => {
-            const isRev = revealed[idx];
+          {revealed.map((isRev, idx) => {
             const isMine = minePositions.has(idx);
-
-            let bg = 'bg-[#1b2033] hover:bg-[#252c47] border-white/10 text-white/40';
-            if (isRev) {
-              if (isMine) {
-                bg = 'bg-rose-500/30 border-rose-500 text-rose-400 animate-pulse';
-              } else {
-                bg = 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)]';
-              }
-            }
-
             return (
               <button
                 key={idx}
-                disabled={!isPlaying || isRev || gameOver}
+                disabled={!isPlaying || isRev || gameOver || won}
                 onClick={() => handleCellClick(idx)}
-                className={`relative rounded-xl border flex items-center justify-center transition-all duration-150 active:scale-90 aspect-square ${bg}`}
+                className={`aspect-square rounded-2xl flex items-center justify-center font-black text-xl transition-all duration-200 active:scale-95 shadow-md ${
+                  !isRev
+                    ? 'bg-[#1b2033] hover:bg-[#252c45] border border-white/10 hover:border-cyan-500/50'
+                    : isMine
+                    ? 'bg-rose-500/20 border-2 border-rose-500 text-rose-400 animate-pulse'
+                    : 'bg-emerald-500/20 border-2 border-emerald-500 text-emerald-300'
+                }`}
               >
                 {isRev ? (
                   isMine ? (
                     <Bomb className="w-6 h-6 animate-bounce" />
                   ) : (
-                    <Diamond className="w-6 h-6 text-cyan-300 drop-shadow" />
+                    <Diamond className="w-6 h-6 animate-pulse" />
                   )
                 ) : (
-                  <span className="w-2 h-2 rounded-full bg-white/20" />
+                  <span className="text-white/20 text-xs">◆</span>
                 )}
               </button>
             );
           })}
         </div>
 
-        {/* Status Alert Banner */}
-        {gameOver && (
-          <div className="p-3 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-center flex items-center justify-center gap-2 text-rose-300 text-xs font-bold">
-            <Bomb className="w-4 h-4" />
-            <span>BOOM! Mine detonated. Better luck next time!</span>
-          </div>
-        )}
-        {won && (
-          <div className="p-3 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-center flex items-center justify-center gap-2 text-emerald-300 text-xs font-bold">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span>Cashed out! +{currentPayout.toFixed(2)} Credits won!</span>
-          </div>
-        )}
-
-        {/* Controls */}
+        {/* Controls and Settings */}
         {!isPlaying ? (
           <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               {/* Bet Amount */}
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">
-                  Bet Amount
+                  Bet Amount ({currency === 'ton' ? 'TON' : 'Stars'})
                 </span>
-                <div className="flex items-center gap-1 bg-black/40 rounded-xl p-1 border border-white/5">
-                  {[25, 50, 100, 250].map(amt => (
+                <div className="flex items-center gap-1 bg-black/40 rounded-xl p-1 border border-white/5 overflow-x-auto scrollbar-none">
+                  {(currency === 'ton' ? tonPresets : starsPresets).map(amt => (
                     <button
                       key={amt}
                       onClick={() => {
@@ -239,7 +258,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
                       }}
                       className={`flex-1 py-1 text-[11px] font-mono rounded-lg transition ${
                         betAmount === amt
-                          ? 'bg-[#ccff00] text-black font-black'
+                          ? currency === 'ton' ? 'bg-cyan-500 text-black font-black' : 'bg-amber-400 text-black font-black'
                           : 'text-white/60 hover:text-white'
                       }`}
                     >
@@ -264,7 +283,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
                       }}
                       className={`flex-1 py-1 text-[11px] font-mono rounded-lg transition ${
                         mineCount === m
-                          ? 'bg-cyan-500 text-black font-black'
+                          ? 'bg-purple-500 text-white font-black'
                           : 'text-white/60 hover:text-white'
                       }`}
                     >
@@ -277,9 +296,18 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
 
             <button
               onClick={handleStartGame}
-              className="w-full py-3 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-black font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg shadow-cyan-400/20"
+              disabled={currentBalance < betAmount}
+              className={`w-full py-3 rounded-2xl font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg ${
+                currentBalance >= betAmount
+                  ? currency === 'ton'
+                    ? 'bg-gradient-to-r from-cyan-400 to-blue-500 hover:brightness-110 text-black shadow-cyan-400/20'
+                    : 'bg-gradient-to-r from-amber-400 to-yellow-500 hover:brightness-110 text-black shadow-amber-400/20'
+                  : 'bg-white/10 text-white/30 cursor-not-allowed'
+              }`}
             >
-              Start Game ({betAmount} 🪙)
+              {currentBalance >= betAmount
+                ? `Start Game (${betAmount} ${currency === 'ton' ? 'TON' : '⭐'})`
+                : 'Insufficient Balance'}
             </button>
           </div>
         ) : (
@@ -289,11 +317,13 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
               onClick={handleCashout}
               className={`w-full py-3 rounded-2xl font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg ${
                 diamondsFound > 0
-                  ? 'bg-[#ccff00] hover:bg-[#b8e600] text-black shadow-[#ccff00]/25'
+                  ? 'bg-emerald-400 hover:bg-emerald-300 text-black shadow-emerald-400/25'
                   : 'bg-white/10 text-white/30 cursor-not-allowed'
               }`}
             >
-              {diamondsFound > 0 ? `Cash Out (${currentPayout.toFixed(2)} 🪙)` : 'Pick at least 1 tile'}
+              {diamondsFound > 0
+                ? `Cash Out (${currentPayout} ${currency === 'ton' ? 'TON' : '⭐'})`
+                : 'Pick at least 1 tile'}
             </button>
           </div>
         )}

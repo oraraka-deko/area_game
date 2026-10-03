@@ -203,21 +203,23 @@ export const GiftsCatalogModal: React.FC<GiftsCatalogModalProps> = ({
             </div>
           ) : (
             filteredGifts.map(gift => {
-              const bgGradient =
-                gift.sample_backdrops?.[0]?.center_color || '#312e81';
-              const topModel = gift.sample_models?.[0]?.name || 'Gift Model';
+              const bgCenter = gift.bg_center || gift.sample_backdrops?.[0]?.center_color || '#8b5cf6';
+              const bgEdge = gift.bg_edge || gift.sample_backdrops?.[0]?.edge_color || '#3b82f6';
+              const topModel = gift.top_model || gift.sample_models?.[0]?.name || gift.name.replace('Telegram Gift #', 'Model #');
+              const floorTon = gift.floor_price_ton !== undefined ? gift.floor_price_ton : +(gift.price_stars * 0.0130 / 1.515).toFixed(3);
+              const floorUsd = gift.floor_price_usd !== undefined ? gift.floor_price_usd : +(gift.price_stars * 0.0130).toFixed(2);
 
               return (
                 <div
                   key={gift.gift_id}
                   className="rounded-2xl border border-white/10 bg-[#131625] overflow-hidden flex flex-col justify-between hover:border-purple-500/40 transition group"
                 >
-                  {/* Visual Artwork Box */}
+                  {/* Visual Artwork Box with Dynamic Backdrops */}
                   <div
                     style={{
-                      background: `linear-gradient(135deg, ${bgGradient}33, #0f121e)`
+                      background: `linear-gradient(135deg, ${bgCenter}33 0%, ${bgEdge}22 100%)`
                     }}
-                    className="p-4 relative flex flex-col items-center justify-center min-h-[110px]"
+                    className="p-4 relative flex flex-col items-center justify-center min-h-[120px]"
                   >
                     {/* Upgradeable Pill */}
                     {gift.is_upgradeable && (
@@ -229,43 +231,60 @@ export const GiftsCatalogModal: React.FC<GiftsCatalogModalProps> = ({
                       </div>
                     )}
 
-                    <div className="text-3xl mb-1 group-hover:scale-110 transition duration-300">
-                      🎁
+                    {/* Dynamic Gift Emblem */}
+                    <div
+                      style={{
+                        background: `linear-gradient(135deg, ${bgCenter} 0%, ${bgEdge} 100%)`,
+                        boxShadow: `0 0 15px ${bgCenter}66`
+                      }}
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white mb-1.5 group-hover:scale-110 transition duration-300 border border-white/20"
+                    >
+                      <Gift className="w-6 h-6 text-white" />
                     </div>
+
                     <div className="text-xs font-black text-white text-center truncate max-w-[90%]">
                       {gift.name}
                     </div>
-                    <div className="text-[10px] text-white/50 font-mono">
+                    <div className="text-[10px] text-cyan-300/80 font-mono font-bold">
                       {topModel}
                     </div>
                   </div>
 
-                  {/* Attributes Summary */}
-                  <div className="p-3 flex flex-col gap-2.5 bg-[#121422]">
-                    <div className="flex items-center justify-between text-[11px] font-mono">
+                  {/* Attributes Summary & Floor Price */}
+                  <div className="p-3 flex flex-col gap-2 bg-[#121422]">
+                    {/* Floor Price */}
+                    <div className="flex items-center justify-between text-[11px] font-mono bg-black/40 px-2.5 py-1.5 rounded-xl border border-white/5">
+                      <span className="text-white/50 text-[10px] font-bold">Floor Price:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-cyan-300 font-bold">{floorTon} TON</span>
+                        <span className="text-white/40 text-[10px]">(${floorUsd})</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-mono px-1">
                       <span className="text-amber-400 font-bold flex items-center gap-1">
-                        <span>⭐ {gift.price_stars}</span>
+                        <span>⭐ {gift.price_stars} Stars</span>
                       </span>
-                      <span className="text-cyan-300 font-bold">
-                        {(gift.price_stars / 100).toFixed(2)} TON
+                      <span className="text-purple-300 font-bold">
+                        {floorTon} TON
                       </span>
                     </div>
 
                     {/* Trait counts */}
                     <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-center">
                       <div className="p-1 rounded bg-black/30 border border-white/5 text-white/60">
-                        {gift.model_count} Models
+                        {gift.model_count || 1} Models
                       </div>
                       <div className="p-1 rounded bg-black/30 border border-white/5 text-white/60">
-                        {gift.backdrop_count} Drops
+                        {gift.backdrop_count || 1} Drops
                       </div>
                       <div className="p-1 rounded bg-black/30 border border-white/5 text-white/60">
-                        {gift.symbol_count} Symbols
+                        {gift.symbol_count || 0} Symbols
                       </div>
                     </div>
 
                     {/* Action buttons */}
-                    <div className="grid grid-cols-2 gap-1.5 mt-1">
+                    <div className="grid grid-cols-2 gap-1.5 mt-0.5">
                       <button
                         onClick={() => handleBuyGift(gift, 'stars')}
                         disabled={buyingId === gift.gift_id}
@@ -279,7 +298,7 @@ export const GiftsCatalogModal: React.FC<GiftsCatalogModalProps> = ({
                         disabled={buyingId === gift.gift_id}
                         className="py-1.5 px-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold uppercase transition active:scale-95 flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        <span>Buy {(gift.price_stars / 100).toFixed(2)} TON</span>
+                        <span>Buy {floorTon} TON</span>
                       </button>
                     </div>
 

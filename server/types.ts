@@ -10,7 +10,7 @@ export interface Relic {
   id: string;
   name: string;
   rarity: RelicRarity;
-  value: number; // in Credits
+  value: number; // in USD
   icon: string;
   color: string;
 }
@@ -19,9 +19,13 @@ export interface PlayerBet {
   playerId: string;
   username: string;
   avatar: string;
-  creditBet: number;
+  currency: 'ton' | 'stars';
+  tonAmount: number;
+  starsAmount: number;
+  betValueUSD: number;
+  creditBet: number; // USD value used for territory calculation
   relics: Relic[];
-  totalBet: number;
+  totalBet: number; // Total USD equivalent
   color: string;
   startTicket: number;
   endTicket: number;
@@ -29,23 +33,32 @@ export interface PlayerBet {
   isBot?: boolean;
 }
 
+export interface RoundWinner {
+  playerId: string;
+  username: string;
+  avatar: string;
+  color: string;
+  winProbability: number;
+  payout: number; // Total USD
+  payoutTon: number;
+  payoutStars: number;
+  payoutUsd: number;
+  rakeAmount: number;
+  rakeTon: number;
+  rakeStars: number;
+  rakePercent: number;
+  wonRelics: Relic[];
+}
+
 export interface RoundHistoryItem {
   roundId: number;
   poolTier: 'STANDARD' | 'HIGH_ROLLER';
   totalPool: number;
+  totalTonPool?: number;
+  totalStarsPool?: number;
   playerCount: number;
   players: PlayerBet[];
-  winner: {
-    playerId: string;
-    username: string;
-    avatar: string;
-    color: string;
-    winProbability: number;
-    payout: number;
-    rakeAmount: number;
-    rakePercent: number;
-    wonRelics: Relic[];
-  };
+  winner: RoundWinner;
   provablyFair: {
     serverSeed: string;
     seedHash: string;
@@ -72,7 +85,9 @@ export interface CurrentRoundState {
   poolTier: 'STANDARD' | 'HIGH_ROLLER';
   serverSeedHash: string;
   revealedServerSeed?: string;
-  totalPool: number;
+  totalPool: number; // Total USD
+  totalTonPool: number;
+  totalStarsPool: number;
   bets: PlayerBet[];
   timeRemainingMs: number;
   roundDurationMs: number;
@@ -80,8 +95,28 @@ export interface CurrentRoundState {
   celebrationDurationMs: number;
   winningTicket?: number;
   winningPlayerId?: string;
-  winner?: RoundHistoryItem['winner'];
+  winner?: RoundWinner;
   trajectory?: any;
   isBettingClosed?: boolean;
   minPlayersNeeded?: number;
+  firstBetPlacedAt?: number | null;
+  cancelAvailableInMs?: number;
+}
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  avatar: string;
+  credits: number; // Legacy compat
+  tonBalance: number;
+  starsBalance: number;
+  inventory: Relic[];
+  stats?: {
+    roundsPlayed?: number;
+    roundsWon?: number;
+    totalWagered?: number;
+    biggestWin?: number;
+    totalDepositedTon?: number;
+    totalDepositedStars?: number;
+  };
 }

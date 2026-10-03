@@ -17,7 +17,12 @@ import {
   Lock,
   Coins,
   Gamepad2,
-  Users
+  Users,
+  Trophy,
+  History,
+  DollarSign,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 
 interface AdminPanelModalProps {
@@ -31,7 +36,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onClose,
   userId
 }) => {
-  const [activeTab, setActiveTab] = useState<'CONFIG' | 'HOT_WALLET' | 'DATABASE' | 'STATS' | 'AUDIT'>('CONFIG');
+  const [activeTab, setActiveTab] = useState<'GAMES_CONTROL' | 'GAMES_HISTORY' | 'CONFIG' | 'DATABASE' | 'AUDIT'>('GAMES_CONTROL');
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -45,14 +50,33 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [adminIds, setAdminIds] = useState<string>('');
   const [neonConn, setNeonConn] = useState<string>('');
 
-  // Live Stats
+  // Game rules & pricing states
+  const [starsPriceUsd, setStarsPriceUsd] = useState<number>(0.0130);
+  const [arenaBotRakePercent, setArenaBotRakePercent] = useState<number>(5.0);
+  const [enabledGames, setEnabledGames] = useState<{
+    arena: boolean;
+    mines: boolean;
+    crush: boolean;
+    cases: boolean;
+    bumper: boolean;
+  }>({
+    arena: true,
+    mines: true,
+    crush: true,
+    cases: true,
+    bumper: true
+  });
+
+  // Live Stats & Games History
   const [stats, setStats] = useState<any>(null);
+  const [gamesHistory, setGamesHistory] = useState<any[]>([]);
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
 
   useEffect(() => {
     if (isOpen) {
       loadConfig();
       loadStats();
+      loadGamesHistory();
     }
   }, [isOpen]);
 
@@ -68,6 +92,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         setIsTestnet(Boolean(data.isTestnet));
         setAdminIds(Array.isArray(data.adminTelegramIds) ? data.adminTelegramIds.join(', ') : '');
         setNeonConn(data.neonConnectionString || '');
+        if (typeof data.starsPriceUsd === 'number') setStarsPriceUsd(data.starsPriceUsd);
+        if (typeof data.arenaBotRakePercent === 'number') setArenaBotRakePercent(data.arenaBotRakePercent);
+        if (data.enabledGames) setEnabledGames(data.enabledGames);
       }
     } catch (err) {
       console.error('Error loading admin config:', err);
@@ -92,6 +119,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     }
   };
 
+  const loadGamesHistory = async () => {
+    try {
+      const res = await fetch('/api/admin/games-history?limit=50');
+      const data = await res.json();
+      if (Array.isArray(data.history)) {
+        setGamesHistory(data.history);
+      }
+    } catch (err) {
+      console.error('Error loading games history:', err);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSaveConfig = async () => {
@@ -108,7 +147,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
       const body: any = {
         depositWalletAddress: depositAddress.trim(),
-        isTestnet
+        isTestnet,
+        starsPriceUsd: Number(starsPriceUsd) || 0.0130,
+        arenaBotRakePercent: Number(arenaBotRakePercent) || 5.0,
+        enabledGames
       };
 
       if (hotWalletMnemonic.trim()) {
@@ -134,139 +176,467 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: 'success', text: 'System configuration updated & saved to database!' });
+        setMessage({ type: 'success', text: 'System settings saved to Neon PostgreSQL & applied!' });
         sound.playVictory();
         haptic.notification('success');
         loadStats();
+        loadGamesHistory();
       } else {
-        throw new Error(data.error || 'Failed to update configuration');
+        setMessage({ type: 'error', text: data.error || 'Failed to save settings' });
       }
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Save failed' });
-      sound.playBettingClosed();
-      haptic.notification('error');
+      setMessage({ type: 'error', text: err.message || 'Network error' });
     } finally {
       setSaving(false);
     }
   };
 
+  const toggleGame = (gameKey: keyof typeof enabledGames) => {
+    sound.playClick();
+    haptic.selection();
+    setEnabledGames(prev => ({
+      ...prev,
+      [gameKey]: !prev[gameKey]
+    }));
+  };
+
+  // Compute stats from gamesHistory
+  const totalVolumeUsd = gamesHistory.reduce((s, g) => s + (g.betAmount || 0), 0);
+  const totalPayoutsUsd = gamesHistory.reduce((s, g) => s + (g.payoutAmount || 0), 0);
+  const totalRakeEarnedUsd = +(gamesHistory.reduce((s, g) => {
+    const rake = g.gameDetails?.rakeTon || g.gameDetails?.rakeUsd || (g.payoutAmount * 0.05) || 0;
+    return s + (typeof rake === 'number' ? rake : 0);
+  }, 0)).toFixed(2);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-md animate-fadeIn select-none">
-      <div className="relative w-full max-w-lg bg-[#0e111a] border border-purple-500/30 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl bg-[#0f111c] border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-950/40 via-black to-blue-950/30">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#141829]">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
-              <Shield className="w-5 h-5" />
+            <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/40">
+              <Shield className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <h2 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-                Production Control Center
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
-                  LIVE
+              <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                <span>Operations & Admin Console</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  ONLINE
                 </span>
               </h2>
-              <p className="text-[11px] text-white/50 font-mono">Neon PostgreSQL & On-Chain Hub</p>
+              <div className="text-[11px] text-white/50 font-mono">
+                Admin: {userId} • Neon PostgreSQL Connected
+              </div>
             </div>
           </div>
+
           <button
             onClick={() => {
-              sound.playClick();
+              haptic.selection();
               onClose();
             }}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition"
+            className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="grid grid-cols-5 p-2 bg-black/40 border-b border-white/5 text-[10px] font-bold uppercase tracking-wider gap-1">
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-white/5 bg-[#0b0d17] overflow-x-auto scrollbar-none">
           <button
             onClick={() => {
-              sound.playClick();
-              setActiveTab('CONFIG');
+              setActiveTab('GAMES_CONTROL');
+              haptic.selection();
             }}
-            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
-              activeTab === 'CONFIG' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'GAMES_CONTROL'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Gamepad2 className="w-3.5 h-3.5" />
+            <span>Games & Pricing</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('GAMES_HISTORY');
+              haptic.selection();
+              loadGamesHistory();
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'GAMES_HISTORY'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Served Games ({gamesHistory.length})</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('CONFIG');
+              haptic.selection();
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'CONFIG'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
             }`}
           >
             <Key className="w-3.5 h-3.5" />
-            <span>Config</span>
+            <span>Wallet & Keys</span>
           </button>
+
           <button
             onClick={() => {
-              sound.playClick();
               setActiveTab('DATABASE');
+              haptic.selection();
             }}
-            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
-              activeTab === 'DATABASE' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'DATABASE'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
-            <span>Neon DB</span>
+            <span>Postgres DB</span>
           </button>
+
           <button
             onClick={() => {
-              sound.playClick();
-              setActiveTab('HOT_WALLET');
+              setActiveTab('AUDIT');
+              haptic.selection();
             }}
-            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
-              activeTab === 'HOT_WALLET' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Hot Wallet</span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('STATS');
-              loadStats();
-            }}
-            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
-              activeTab === 'STATS' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'AUDIT'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>Metrics</span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('AUDIT');
-              loadStats();
-            }}
-            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
-              activeTab === 'AUDIT' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            <span>Audit</span>
+            <span>Audit & Logs</span>
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-4 overflow-y-auto flex-1 text-white">
-          {message && (
-            <div
-              className={`p-3 rounded-2xl mb-4 text-xs flex items-center gap-2 ${
-                message.type === 'success'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
-              }`}
-            >
-              {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-              <span>{message.text}</span>
+        {/* Status Message */}
+        {message && (
+          <div
+            className={`px-4 py-2.5 mx-4 mt-3 rounded-2xl text-xs flex items-center gap-2 border ${
+              message.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+            }`}
+          >
+            {message.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{message.text}</span>
+          </div>
+        )}
+
+        {/* Tab Body */}
+        <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
+          {/* TAB 1: GAMES & PRICING CONTROL */}
+          {activeTab === 'GAMES_CONTROL' && (
+            <div className="flex flex-col gap-4">
+              {/* Telegram Stars & Bot Rake Configuration */}
+              <div className="p-3.5 rounded-2xl bg-[#141727] border border-white/10 flex flex-col gap-3">
+                <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-amber-400" />
+                  <span>Currency Valuation & Game Rake Rules</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Stars Price Field */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold text-white/60">
+                      Telegram Stars Valuation (USD)
+                    </label>
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3 text-amber-400 font-mono text-xs">$</span>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        min="0.001"
+                        value={starsPriceUsd}
+                        onChange={e => setStarsPriceUsd(parseFloat(e.target.value) || 0.0130)}
+                        className="w-full pl-7 pr-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs font-mono text-amber-300 outline-none focus:border-amber-400"
+                        placeholder="0.0130"
+                      />
+                    </div>
+                    <span className="text-[10px] text-white/40 font-mono">
+                      Official Fragment Creator Cashout: ~$0.0130 – $0.0133
+                    </span>
+                  </div>
+
+                  {/* Area Bot Rake Field */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold text-white/60">
+                      Area Game Bot Fee / Rake (%)
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="25"
+                        value={arenaBotRakePercent}
+                        onChange={e => setArenaBotRakePercent(parseFloat(e.target.value) || 5.0)}
+                        className="w-full pl-3 pr-7 py-2 bg-black/40 border border-white/10 rounded-xl text-xs font-mono text-cyan-300 outline-none focus:border-cyan-400"
+                        placeholder="5.0"
+                      />
+                      <span className="absolute right-3 text-cyan-400 font-mono text-xs">%</span>
+                    </div>
+                    <span className="text-[10px] text-white/40 font-mono">
+                      Winner pays 5% of winning pot to bot/house
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Game Availability Toggles */}
+              <div className="p-3.5 rounded-2xl bg-[#141727] border border-white/10 flex flex-col gap-3">
+                <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Gamepad2 className="w-4 h-4 text-purple-400" />
+                    <span>Game Mode Availability Controls</span>
+                  </div>
+                  <span className="text-[10px] text-white/40 font-mono">
+                    Admin toggle to disable individual games
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Area PvP */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-white/5">
+                    <div>
+                      <div className="text-xs font-bold text-white">Area PvP Arena</div>
+                      <div className="text-[10px] text-white/40 font-mono">Multiplayer 2D jackpot wheel</div>
+                    </div>
+                    <button
+                      onClick={() => toggleGame('arena')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        enabledGames.arena
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {enabledGames.arena ? 'ENABLED' : 'DISABLED'}
+                    </button>
+                  </div>
+
+                  {/* Mines PvE */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-white/5">
+                    <div>
+                      <div className="text-xs font-bold text-white">Mines PvE</div>
+                      <div className="text-[10px] text-white/40 font-mono">Tile uncovering game</div>
+                    </div>
+                    <button
+                      onClick={() => toggleGame('mines')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        enabledGames.mines
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {enabledGames.mines ? 'ENABLED' : 'DISABLED'}
+                    </button>
+                  </div>
+
+                  {/* Crush Rocket */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-white/5">
+                    <div>
+                      <div className="text-xs font-bold text-white">Crush Rocket</div>
+                      <div className="text-[10px] text-white/40 font-mono">Multiplier flight cashout</div>
+                    </div>
+                    <button
+                      onClick={() => toggleGame('crush')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        enabledGames.crush
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {enabledGames.crush ? 'ENABLED' : 'DISABLED'}
+                    </button>
+                  </div>
+
+                  {/* Cases Unboxing */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-white/5">
+                    <div>
+                      <div className="text-xs font-bold text-white">Cases Unboxing</div>
+                      <div className="text-[10px] text-white/40 font-mono">Crate unboxing for relics</div>
+                    </div>
+                    <button
+                      onClick={() => toggleGame('cases')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        enabledGames.cases
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {enabledGames.cases ? 'ENABLED' : 'DISABLED'}
+                    </button>
+                  </div>
+
+                  {/* Bump Sumo Arena */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-white/5 sm:col-span-2">
+                    <div>
+                      <div className="text-xs font-bold text-white">Bump Sumo Arena</div>
+                      <div className="text-[10px] text-white/40 font-mono">Sumo ring collision multiplayer</div>
+                    </div>
+                    <button
+                      onClick={() => toggleGame('bumper')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        enabledGames.bumper
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {enabledGames.bumper ? 'ENABLED' : 'DISABLED'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <button
+                onClick={handleSaveConfig}
+                disabled={saving}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 text-white font-black text-xs uppercase tracking-wider transition active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 disabled:opacity-50"
+              >
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Save Game Rules & Toggles</span>
+              </button>
             </div>
           )}
 
-          {/* TAB: CONFIG */}
-          {activeTab === 'CONFIG' && (
+          {/* TAB 2: SERVED GAMES HISTORY & FINANCIALS */}
+          {activeTab === 'GAMES_HISTORY' && (
             <div className="flex flex-col gap-3.5">
+              {/* Financial Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Games Served</div>
+                  <div className="text-lg font-black text-white mt-1">
+                    {gamesHistory.length}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Total Volume (USD)</div>
+                  <div className="text-lg font-black text-cyan-300 mt-1">
+                    ${totalVolumeUsd.toFixed(2)}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Bot Rake (5%)</div>
+                  <div className="text-lg font-black text-emerald-400 mt-1">
+                    ${totalRakeEarnedUsd}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Player Payouts</div>
+                  <div className="text-lg font-black text-amber-400 mt-1">
+                    ${totalPayoutsUsd.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              {/* History Table */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs font-bold text-white px-1">
+                  <span>Served Game Rounds & Financial Records</span>
+                  <button
+                    onClick={loadGamesHistory}
+                    className="text-[10px] text-cyan-400 flex items-center gap-1 hover:underline font-mono"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {gamesHistory.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-white/40 font-mono border border-dashed border-white/10 rounded-2xl">
+                    No served game rounds recorded yet in Neon PostgreSQL.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pr-1">
+                    {gamesHistory.map((game: any) => {
+                      const mode = game.gameId || 'arena';
+                      const details = game.gameDetails || {};
+                      const winnerName = details.winnerUsername || details.survivor || game.userId;
+                      const rakeAmount = details.rakeTon ? `${details.rakeTon} TON` : (details.rakeStars ? `${details.rakeStars} ⭐` : '5%');
+
+                      return (
+                        <div
+                          key={game.id}
+                          className="p-3 rounded-2xl bg-[#131627] border border-white/5 flex flex-col gap-1.5 text-xs hover:border-white/10 transition"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 font-mono font-bold text-[10px] uppercase">
+                                {mode}
+                              </span>
+                              <span className="font-mono text-white font-bold">
+                                {game.id}
+                              </span>
+                            </div>
+
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                              ✓ Credited In-App
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono pt-1 border-t border-white/5">
+                            <div>
+                              <span className="text-white/40 block text-[9px]">WINNER</span>
+                              <span className="text-white font-bold truncate block">{winnerName}</span>
+                            </div>
+                            <div>
+                              <span className="text-white/40 block text-[9px]">WAGER / POT</span>
+                              <span className="text-white font-bold">
+                                {details.totalTon ? `${details.totalTon} TON` : `${game.betAmount} USD`}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-white/40 block text-[9px]">WINNER PAYOUT</span>
+                              <span className="text-emerald-400 font-bold">
+                                {details.payoutTon ? `${details.payoutTon} TON` : `${game.payoutAmount} USD`}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-white/40 block text-[9px]">BOT 5% RAKE</span>
+                              <span className="text-cyan-300 font-bold">
+                                {rakeAmount}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-[9px] text-white/40 font-mono">
+                            {new Date(game.createdAt).toLocaleString()} • Server Seed Hash: {game.serverSeedHash ? `${game.serverSeedHash.slice(0, 16)}...` : 'Verified'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: CONFIG & KEYS */}
+          {activeTab === 'CONFIG' && (
+            <div className="flex flex-col gap-3">
               <div>
                 <label className="text-[11px] font-bold uppercase text-white/50 mb-1 block">
-                  Deposit Receiver TON Address
+                  Deposit Target Wallet Address (TON)
                 </label>
                 <input
                   type="text"
@@ -275,14 +645,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   className="w-full bg-black/40 border border-white/10 rounded-2xl p-2.5 text-xs font-mono text-cyan-300 outline-none"
                   placeholder="EQBvW8Z5huBkMJYdnF64PT5fqJZW2elETRRFFsA-b281bf20"
                 />
-                <span className="text-[10px] text-white/40 font-mono mt-1 block">
-                  User TON deposits are directed to this on-chain address with unique comment tag.
-                </span>
               </div>
 
               <div>
                 <label className="text-[11px] font-bold uppercase text-white/50 mb-1 block">
-                  TonCenter API Key
+                  TonCenter API Key (Mainnet)
                 </label>
                 <input
                   type="text"
@@ -295,7 +662,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
               <div>
                 <label className="text-[11px] font-bold uppercase text-white/50 mb-1 block">
-                  Telegram Bot Token (Stars Invoicing)
+                  Telegram Bot Stars Token (BotFather)
                 </label>
                 <input
                   type="text"
@@ -327,7 +694,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
               <div>
                 <label className="text-[11px] font-bold uppercase text-white/50 mb-1 block">
-                  Admin Telegram IDs (comma-separated)
+                  Admin Telegram IDs (comma-separated, Cloud Run secret ADMIN_ID)
                 </label>
                 <input
                   type="text"
@@ -344,12 +711,12 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 className="w-full py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-wider transition active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 disabled:opacity-50 mt-2"
               >
                 {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>Save Admin Configuration</span>
+                <span>Save Configuration</span>
               </button>
             </div>
           )}
 
-          {/* TAB: DATABASE (NEON POSTGRES) */}
+          {/* TAB 4: DATABASE (NEON POSTGRES) */}
           {activeTab === 'DATABASE' && (
             <div className="flex flex-col gap-3.5">
               <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5">
@@ -358,7 +725,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   <div className="font-bold flex items-center gap-2">
                     <span>Neon PostgreSQL Connection</span>
                     <span className="px-2 py-0.5 rounded-full bg-emerald-400 text-black text-[9px] font-black uppercase">
-                      Active
+                      Connected
                     </span>
                   </div>
                   <p className="text-[11px] text-emerald-200/80 mt-1 leading-relaxed">
@@ -419,89 +786,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             </div>
           )}
 
-          {/* TAB: HOT WALLET */}
-          {activeTab === 'HOT_WALLET' && (
-            <div className="flex flex-col gap-3">
-              <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-start gap-2.5">
-                <Lock className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
-                <div className="text-xs text-cyan-200">
-                  <div className="font-bold">Automated Hot Wallet for TON Withdrawals</div>
-                  <p className="text-[11px] text-cyan-200/70 mt-1 leading-relaxed">
-                    Set up your 12 or 24 secret recovery words. When a user requests a TON withdrawal, the hot wallet automatically signs and broadcasts the transfer to their destination address via TonCenter API.
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold uppercase text-white/50 mb-1 block">
-                  Hot Wallet Secret Words (12 or 24 words)
-                </label>
-                <textarea
-                  rows={3}
-                  value={hotWalletMnemonic}
-                  onChange={e => setHotWalletMnemonic(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 text-xs font-mono text-white outline-none placeholder-white/30"
-                  placeholder="word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12"
-                />
-                <span className="text-[10px] text-white/40 font-mono mt-1 block">
-                  Stored securely and referenced for instant automated user payouts.
-                </span>
-              </div>
-
-              <button
-                onClick={handleSaveConfig}
-                disabled={saving}
-                className="w-full py-3.5 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs uppercase tracking-wider transition active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-50 mt-2"
-              >
-                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>Update Hot Wallet Keys</span>
-              </button>
-            </div>
-          )}
-
-          {/* TAB: STATS & RATE LIMITER */}
-          {activeTab === 'STATS' && (
-            <div className="flex flex-col gap-3">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="p-3 rounded-2xl bg-black/40 border border-white/10 text-center">
-                  <div className="text-[10px] text-white/40 uppercase font-mono">Rate Limit</div>
-                  <div className="text-base font-black font-mono text-[#ccff00] mt-1">10 req/s</div>
-                </div>
-                <div className="p-3 rounded-2xl bg-black/40 border border-white/10 text-center">
-                  <div className="text-[10px] text-white/40 uppercase font-mono">Available Tokens</div>
-                  <div className="text-base font-black font-mono text-cyan-400 mt-1">
-                    {stats?.rateLimiter?.availableTokens ?? 10} / 10
-                  </div>
-                </div>
-                <div className="p-3 rounded-2xl bg-black/40 border border-white/10 text-center">
-                  <div className="text-[10px] text-white/40 uppercase font-mono">Calls Handled</div>
-                  <div className="text-base font-black font-mono text-white mt-1">
-                    {stats?.rateLimiter?.totalCalls ?? 0}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-[#131627] border border-white/10 flex flex-col gap-2">
-                <div className="text-xs font-bold text-white flex items-center justify-between">
-                  <span>Neon PostgreSQL Engine</span>
-                  <span className="text-emerald-400 text-[10px] font-mono font-bold">CONNECTED</span>
-                </div>
-                <div className="text-[11px] font-mono text-white/60">
-                  Pool: ep-lingering-river-b5z4kwub-pooler
-                </div>
-              </div>
-
-              <button
-                onClick={loadStats}
-                className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-mono text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Refresh Live Metrics</span>
-              </button>
-            </div>
-          )}
-
-          {/* TAB: AUDIT LEDGER & ACTIVITY LOGS */}
+          {/* TAB 5: AUDIT LEDGER & ACTIVITY LOGS */}
           {activeTab === 'AUDIT' && (
             <div className="flex flex-col gap-3">
               <div>

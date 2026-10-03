@@ -7,7 +7,7 @@ import {
   Relic,
   RoundHistoryItem,
   ChatMessage,
-  RoundStatus
+  RoundWinner
 } from './types.js';
 import {
   generateServerSeed,
@@ -19,6 +19,8 @@ import { BOT_PROFILES, BOT_CHAT_LINES, getRandomRelic } from './botSimulator.js'
 import { generateArenaCommentary } from './geminiAnnouncer.js';
 import { simulateAirHockeyFlight } from '../src/utils/physics.js';
 import { computeProportionalTerritories } from '../src/utils/slicing.js';
+import { updateUserWallet, recordLedgerTransaction, recordGameRound, getSystemConfig } from './db.js';
+import { getCachedRates } from './rates.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,12 +38,15 @@ export class ArenaGameEngine {
   private callbacks: StateMachineCallbacks;
   private timer: NodeJS.Timeout | null = null;
   private botTimer: NodeJS.Timeout | null = null;
+  private cancelCheckTimer: NodeJS.Timeout | null = null;
   private roundStartTime: number = Date.now();
   private botsInRound: Set<string> = new Set();
+  private firstBetPlacedAt: number | null = null;
 
   public readonly ROUND_BETTING_MS = 20000;
   public readonly RESOLUTION_MS = 10000;
   public readonly CELEBRATION_MS = 6000;
+  public readonly CANCEL_THRESHOLD_MS = 60000; // 1 minute cancel bet timeout
   public autoStart: boolean = false;
 
   constructor(callbacks: StateMachineCallbacks) {
@@ -53,13 +58,17 @@ export class ArenaGameEngine {
       poolTier: 'STANDARD',
       serverSeedHash: this.provablyFairKeys.seedHash,
       totalPool: 0,
+      totalTonPool: 0,
+      totalStarsPool: 0,
       bets: [],
       timeRemainingMs: this.ROUND_BETTING_MS,
       roundDurationMs: this.ROUND_BETTING_MS,
       resolutionDurationMs: this.RESOLUTION_MS,
       celebrationDurationMs: this.CELEBRATION_MS,
       isBettingClosed: false,
-      minPlayersNeeded: 1
+      minPlayersNeeded: 2,
+      firstBetPlacedAt: null,
+      cancelAvailableInMs: 60000
     };
 
     this.seedInitialHistory();
@@ -70,7 +79,14 @@ export class ArenaGameEngine {
   }
 
   public getState(): CurrentRoundState {
-    return this.currentRound;
+    const cancelRemaining = this.firstBetPlacedAt
+      ? Math.max(0, this.CANCEL_THRESHOLD_MS - (Date.now() - this.firstBetPlacedAt))
+      : 60000;
+    return {
+      ...this.currentRound,
+      firstBetPlacedAt: this.firstBetPlacedAt,
+      cancelAvailableInMs: cancelRemaining
+    };
   }
 
   public getHistory(): RoundHistoryItem[] {
@@ -100,19 +116,25 @@ export class ArenaGameEngine {
       {
         roundId: 436010,
         poolTier: 'HIGH_ROLLER',
-        totalPool: 2850,
+        totalPool: 4.31,
+        totalTonPool: 2.5,
+        totalStarsPool: 40,
         playerCount: 3,
         players: [
           {
             playerId: 'bot_tetris',
             username: 'Тетрис #проклят',
             avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-            color: '#8b5cf6',
-            creditBet: 1500,
+            currency: 'ton',
+            tonAmount: 1.5,
+            starsAmount: 0,
+            betValueUSD: 2.27,
+            creditBet: 2.27,
             relics: [],
-            totalBet: 1500,
+            totalBet: 2.27,
+            color: '#8b5cf6',
             startTicket: 0,
-            endTicket: 1500,
+            endTicket: 2.27,
             winProbability: 0.5263,
             isBot: true
           },
@@ -120,26 +142,34 @@ export class ArenaGameEngine {
             playerId: 'bot_lmia',
             username: '-LMIA-',
             avatar: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=120&auto=format&fit=crop&q=80',
-            color: '#0ea5e9',
-            creditBet: 850,
+            currency: 'ton',
+            tonAmount: 1.0,
+            starsAmount: 0,
+            betValueUSD: 1.51,
+            creditBet: 1.51,
             relics: [],
-            totalBet: 850,
-            startTicket: 1500,
-            endTicket: 2350,
-            winProbability: 0.2982,
+            totalBet: 1.51,
+            color: '#0ea5e9',
+            startTicket: 2.27,
+            endTicket: 3.78,
+            winProbability: 0.3503,
             isBot: true
           },
           {
             playerId: 'bot_roman',
             username: 'Roman',
             avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-            color: '#f59e0b',
-            creditBet: 500,
+            currency: 'stars',
+            tonAmount: 0,
+            starsAmount: 40,
+            betValueUSD: 0.52,
+            creditBet: 0.52,
             relics: [],
-            totalBet: 500,
-            startTicket: 2350,
-            endTicket: 2850,
-            winProbability: 0.1754,
+            totalBet: 0.52,
+            color: '#f59e0b',
+            startTicket: 3.78,
+            endTicket: 4.30,
+            winProbability: 0.1234,
             isBot: true
           }
         ],
@@ -149,69 +179,23 @@ export class ArenaGameEngine {
           avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
           color: '#8b5cf6',
           winProbability: 0.5263,
-          payout: 2679,
-          rakeAmount: 171,
-          rakePercent: 6.0,
+          payout: 4.09,
+          payoutTon: 2.375,
+          payoutStars: 38,
+          payoutUsd: 4.09,
+          rakeAmount: 0.22,
+          rakeTon: 0.125,
+          rakeStars: 2,
+          rakePercent: 5.0,
           wonRelics: []
         },
         provablyFair: {
           serverSeed: '644ed62981374091283749182739481273948172938471928374918273948127',
           seedHash: 'cb5aef8eb8293847192837491827394817293847192837491827394817293847',
-          winningTicket: 642.15,
-          winningValue: 642.15
+          winningTicket: 1.15,
+          winningValue: 1.15
         },
         completedAt: Date.now() - 180000
-      },
-      {
-        roundId: 436009,
-        poolTier: 'STANDARD',
-        totalPool: 620,
-        playerCount: 2,
-        players: [
-          {
-            playerId: 'usr_me',
-            username: 'NeoGlitch',
-            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-            color: '#ccff00',
-            creditBet: 400,
-            relics: [],
-            totalBet: 400,
-            startTicket: 0,
-            endTicket: 400,
-            winProbability: 0.6452
-          },
-          {
-            playerId: 'bot_inaku',
-            username: 'inaku',
-            avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-            color: '#ec4899',
-            creditBet: 220,
-            relics: [],
-            totalBet: 220,
-            startTicket: 400,
-            endTicket: 620,
-            winProbability: 0.3548,
-            isBot: true
-          }
-        ],
-        winner: {
-          playerId: 'usr_me',
-          username: 'NeoGlitch',
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-          color: '#ccff00',
-          winProbability: 0.6452,
-          payout: 582.8,
-          rakeAmount: 37.2,
-          rakePercent: 6.0,
-          wonRelics: []
-        },
-        provablyFair: {
-          serverSeed: 'e880fa31b9920194812398418abdf62901239129031203912039120391203912',
-          seedHash: 'dd694ad1eb834710293847192837491827394817293847192837491827394817293847',
-          winningTicket: 154.20,
-          winningValue: 154.20
-        },
-        completedAt: Date.now() - 420000
       }
     ];
 
@@ -229,8 +213,10 @@ export class ArenaGameEngine {
   private startWaitingPhase() {
     this.provablyFairKeys = generateServerSeed();
     this.botsInRound.clear();
+    this.firstBetPlacedAt = null;
     if (this.timer) clearInterval(this.timer);
     if (this.botTimer) clearInterval(this.botTimer);
+    if (this.cancelCheckTimer) clearInterval(this.cancelCheckTimer);
 
     const isHighRoller = Math.random() < 0.25;
     this.currentRound = {
@@ -239,13 +225,17 @@ export class ArenaGameEngine {
       poolTier: isHighRoller ? 'HIGH_ROLLER' : 'STANDARD',
       serverSeedHash: this.provablyFairKeys.seedHash,
       totalPool: 0,
+      totalTonPool: 0,
+      totalStarsPool: 0,
       bets: [],
       timeRemainingMs: this.ROUND_BETTING_MS,
       roundDurationMs: this.ROUND_BETTING_MS,
       resolutionDurationMs: this.RESOLUTION_MS,
       celebrationDurationMs: this.CELEBRATION_MS,
       isBettingClosed: false,
-      minPlayersNeeded: 1
+      minPlayersNeeded: 2,
+      firstBetPlacedAt: null,
+      cancelAvailableInMs: 60000
     };
 
     this.broadcastState();
@@ -261,6 +251,7 @@ export class ArenaGameEngine {
   public forceRollNow() {
     if (this.currentRound.bets.length === 0) return;
     if (this.timer) clearInterval(this.timer);
+    if (this.cancelCheckTimer) clearInterval(this.cancelCheckTimer);
     this.currentRound.isBettingClosed = true;
     this.resolveRound();
   }
@@ -268,6 +259,7 @@ export class ArenaGameEngine {
   public forceResetRound() {
     if (this.timer) clearInterval(this.timer);
     if (this.botTimer) clearInterval(this.botTimer);
+    if (this.cancelCheckTimer) clearInterval(this.cancelCheckTimer);
     this.startWaitingPhase();
   }
 
@@ -276,6 +268,11 @@ export class ArenaGameEngine {
     this.roundStartTime = Date.now();
     this.currentRound.timeRemainingMs = this.ROUND_BETTING_MS;
     this.currentRound.isBettingClosed = false;
+
+    if (this.cancelCheckTimer) {
+      clearInterval(this.cancelCheckTimer);
+      this.cancelCheckTimer = null;
+    }
 
     this.broadcastState();
 
@@ -295,7 +292,6 @@ export class ArenaGameEngine {
         if (this.timer) clearInterval(this.timer);
         this.resolveRound();
       } else {
-        // Broadcast periodic ticks (and frequent ticks during 10s alert phase)
         if (remaining <= 10000 || remaining % 1000 < 100) {
           this.callbacks.broadcast({
             type: 'TIME_TICK',
@@ -308,8 +304,64 @@ export class ArenaGameEngine {
     }, 100);
   }
 
+  public async cancelBet(playerId: string): Promise<{ success: boolean; error?: string; refundedTon?: number; refundedStars?: number }> {
+    if (this.currentRound.status !== 'WAITING_FOR_PLAYERS') {
+      return { success: false, error: 'Cannot cancel bet once 2 players joined and round countdown started' };
+    }
+
+    if (this.currentRound.bets.length > 1) {
+      return { success: false, error: 'Cannot cancel bet when match has 2 or more players' };
+    }
+
+    const betIndex = this.currentRound.bets.findIndex(b => b.playerId === playerId);
+    if (betIndex === -1) {
+      return { success: false, error: 'No active bet found for player' };
+    }
+
+    const bet = this.currentRound.bets[betIndex];
+    const tonRefund = bet.tonAmount || 0;
+    const starsRefund = bet.starsAmount || 0;
+
+    // Refund directly back into user's in-app wallet
+    try {
+      await updateUserWallet(playerId, prev => ({
+        tonBalance: +(prev.tonBalance + tonRefund).toFixed(4),
+        starsBalance: prev.starsBalance + starsRefund
+      }));
+
+      await recordLedgerTransaction({
+        id: `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        userId: playerId,
+        type: 'BET_REFUND',
+        amountTon: tonRefund,
+        amountStars: starsRefund,
+        status: 'CONFIRMED',
+        comment: `Refunded bet for Round #${this.currentRound.roundId} (User cancelled)`,
+        createdAt: Date.now()
+      });
+    } catch (err) {
+      console.error('Error processing refund to user wallet:', err);
+    }
+
+    // Remove bet and reset waiting state
+    this.currentRound.bets.splice(betIndex, 1);
+    this.firstBetPlacedAt = null;
+    this.recalculateTicketsAndProbabilities();
+    this.broadcastState();
+
+    return {
+      success: true,
+      refundedTon: tonRefund,
+      refundedStars: starsRefund
+    };
+  }
+
   public addRandomPlayer(creditAmount?: number): { success: boolean; player?: any; error?: string } {
-    if (this.currentRound.isBettingClosed || this.currentRound.status === 'ROUND_RESOLVING' || this.currentRound.status === 'WINNER_CELEBRATION') {
+    if (
+      this.currentRound.isBettingClosed ||
+      this.currentRound.status === 'ROUND_RESOLVING' ||
+      this.currentRound.status === 'WINNER_CELEBRATION'
+    ) {
       return { success: false, error: 'Cannot add player while round is resolving or in celebration' };
     }
 
@@ -333,13 +385,23 @@ export class ArenaGameEngine {
     }
     this.botsInRound.add(bot.id);
 
-    // Random bet amount: between 20 and 500 in multiples of 10 if not specified
-    const randomBet = (creditAmount !== undefined && creditAmount > 0)
-      ? Math.floor(creditAmount)
-      : Math.floor(2 + Math.random() * 48) * 10;
+    // Random choice of currency: 50% TON, 50% Stars
+    const useTon = Math.random() > 0.4;
+    const currency = useTon ? 'ton' : 'stars';
+    let amount = 0;
+
+    if (currency === 'ton') {
+      amount = creditAmount !== undefined && creditAmount > 0
+        ? +(creditAmount / 100).toFixed(2)
+        : +([0.2, 0.5, 0.75, 1.0, 1.5, 2.0][Math.floor(Math.random() * 6)]);
+    } else {
+      amount = creditAmount !== undefined && creditAmount > 0
+        ? Math.floor(creditAmount)
+        : [15, 25, 50, 75, 100, 150][Math.floor(Math.random() * 6)];
+    }
 
     const relics: Relic[] = [];
-    if (Math.random() < 0.3) {
+    if (Math.random() < 0.25) {
       relics.push(getRandomRelic());
     }
 
@@ -348,22 +410,21 @@ export class ArenaGameEngine {
       username: bot.username,
       avatar: bot.avatar,
       color: bot.color,
-      creditAmount: randomBet,
+      currency,
+      amount,
       relics,
       isBot: true
     });
 
-    if (placeResult.success) {
-      if (Math.random() < 0.6) {
-        const line = BOT_CHAT_LINES[Math.floor(Math.random() * BOT_CHAT_LINES.length)];
-        this.callbacks.sendChat({
-          id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          sender: bot.username,
-          avatar: bot.avatar,
-          text: line,
-          timestamp: Date.now()
-        });
-      }
+    if (placeResult.success && Math.random() < 0.5) {
+      const line = BOT_CHAT_LINES[Math.floor(Math.random() * BOT_CHAT_LINES.length)];
+      this.callbacks.sendChat({
+        id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        sender: bot.username,
+        avatar: bot.avatar,
+        text: line,
+        timestamp: Date.now()
+      });
     }
 
     return { success: placeResult.success, player: bot, error: placeResult.error };
@@ -374,21 +435,43 @@ export class ArenaGameEngine {
     username: string;
     avatar: string;
     color?: string;
-    creditAmount: number;
+    currency?: 'ton' | 'stars';
+    amount?: number;
+    creditAmount?: number; // fallback legacy
     relics?: Relic[];
     isBot?: boolean;
   }): { success: boolean; error?: string } {
-    if (this.currentRound.isBettingClosed || this.currentRound.status === 'ROUND_RESOLVING' || this.currentRound.status === 'WINNER_CELEBRATION') {
+    if (
+      this.currentRound.isBettingClosed ||
+      this.currentRound.status === 'ROUND_RESOLVING' ||
+      this.currentRound.status === 'WINNER_CELEBRATION'
+    ) {
       return { success: false, error: 'Betting is closed for this round' };
     }
 
-    const creditAmount = Math.max(0, Math.floor(params.creditAmount));
+    const currency: 'ton' | 'stars' = params.currency || (params.amount !== undefined ? 'ton' : 'stars');
+    const rawAmount = params.amount !== undefined ? params.amount : (params.creditAmount || 10);
+
+    if (rawAmount <= 0) {
+      return { success: false, error: 'Bet amount must be greater than 0' };
+    }
+
+    const rates = getCachedRates();
+    const tonPrice = rates.tonPriceUsd || 1.515;
+    const starsPrice = rates.starsPriceUsd || 0.0130;
+
+    const tonAmount = currency === 'ton' ? rawAmount : 0;
+    const starsAmount = currency === 'stars' ? Math.floor(rawAmount) : 0;
+
     const relics = params.relics || [];
     const relicsValue = relics.reduce((sum, r) => sum + r.value, 0);
-    const addedTotal = creditAmount + relicsValue;
 
-    if (addedTotal <= 0) {
-      return { success: false, error: 'Bet must be greater than 0' };
+    // Calculate normalized USD value for fair tickets and 2D territory slicing
+    const betUsdValue = +(tonAmount * tonPrice + starsAmount * starsPrice).toFixed(4);
+    const addedTotalUsd = +(betUsdValue + relicsValue).toFixed(4);
+
+    if (addedTotalUsd <= 0) {
+      return { success: false, error: 'Total bet value must be positive' };
     }
 
     const palette = [
@@ -399,18 +482,25 @@ export class ArenaGameEngine {
     let existingBet = this.currentRound.bets.find(b => b.playerId === params.playerId);
 
     if (existingBet) {
-      existingBet.creditBet += creditAmount;
+      existingBet.tonAmount += tonAmount;
+      existingBet.starsAmount += starsAmount;
+      existingBet.betValueUSD = +(existingBet.betValueUSD + betUsdValue).toFixed(4);
+      existingBet.creditBet = existingBet.betValueUSD;
       existingBet.relics = [...existingBet.relics, ...relics];
-      existingBet.totalBet += addedTotal;
+      existingBet.totalBet = +(existingBet.totalBet + addedTotalUsd).toFixed(4);
     } else {
       const color = params.color || palette[this.currentRound.bets.length % palette.length];
       this.currentRound.bets.push({
         playerId: params.playerId,
         username: params.username,
         avatar: params.avatar,
-        creditBet: creditAmount,
+        currency,
+        tonAmount,
+        starsAmount,
+        betValueUSD: betUsdValue,
+        creditBet: betUsdValue,
         relics: [...relics],
-        totalBet: addedTotal,
+        totalBet: addedTotalUsd,
         color,
         startTicket: 0,
         endTicket: 0,
@@ -421,15 +511,29 @@ export class ArenaGameEngine {
 
     this.recalculateTicketsAndProbabilities();
 
-    // If autoStart is enabled and we have at least 1 player, start countdown
-    if (this.autoStart && this.currentRound.status === 'WAITING_FOR_PLAYERS' && this.currentRound.bets.length >= (this.currentRound.minPlayersNeeded || 1)) {
+    // 1-Player Waiting Logic & 2-Player Start Rule
+    if (this.currentRound.bets.length === 1 && !this.firstBetPlacedAt) {
+      this.firstBetPlacedAt = Date.now();
+      // Periodically update cancel countdown
+      if (this.cancelCheckTimer) clearInterval(this.cancelCheckTimer);
+      this.cancelCheckTimer = setInterval(() => {
+        if (this.currentRound.status === 'WAITING_FOR_PLAYERS' && this.currentRound.bets.length === 1) {
+          this.broadcastState();
+        } else {
+          if (this.cancelCheckTimer) clearInterval(this.cancelCheckTimer);
+        }
+      }, 1000);
+    }
+
+    // When 2 or more players have bet in PvP, start the countdown immediately!
+    if (this.currentRound.status === 'WAITING_FOR_PLAYERS' && this.currentRound.bets.length >= 2) {
       this.startCountdownTimer();
     } else {
       this.broadcastState();
     }
 
-    // If pot spikes over 5,000 credits for the first time in round, announce it
-    if (this.currentRound.totalPool >= 5000 && !existingBet) {
+    // High roller pot commentary announcement
+    if (this.currentRound.totalPool >= 25 && !existingBet) {
       generateArenaCommentary({
         type: 'POT_SPIKE',
         roundId: this.currentRound.roundId,
@@ -452,20 +556,24 @@ export class ArenaGameEngine {
   }
 
   private recalculateTicketsAndProbabilities() {
-    const total = this.currentRound.bets.reduce((sum, b) => sum + b.totalBet, 0);
-    this.currentRound.totalPool = +(total.toFixed(2));
+    const totalUsd = this.currentRound.bets.reduce((sum, b) => sum + b.totalBet, 0);
+    const totalTon = this.currentRound.bets.reduce((sum, b) => sum + (b.tonAmount || 0), 0);
+    const totalStars = this.currentRound.bets.reduce((sum, b) => sum + (b.starsAmount || 0), 0);
+
+    this.currentRound.totalPool = +(totalUsd.toFixed(2));
+    this.currentRound.totalTonPool = +(totalTon.toFixed(4));
+    this.currentRound.totalStarsPool = totalStars;
 
     let currentTicket = 0;
     for (const bet of this.currentRound.bets) {
-      bet.startTicket = +(currentTicket.toFixed(2));
+      bet.startTicket = +(currentTicket.toFixed(4));
       currentTicket += bet.totalBet;
-      bet.endTicket = +(currentTicket.toFixed(2));
-      bet.winProbability = total > 0 ? +(bet.totalBet / total).toFixed(4) : 0;
+      bet.endTicket = +(currentTicket.toFixed(4));
+      bet.winProbability = totalUsd > 0 ? +(bet.totalBet / totalUsd).toFixed(4) : 0;
     }
   }
 
   private async resolveRound() {
-    // If no bets were placed, return to waiting phase
     if (this.currentRound.bets.length === 0) {
       this.startWaitingPhase();
       return;
@@ -486,30 +594,110 @@ export class ArenaGameEngine {
     );
 
     if (!outcome) {
-      // Emergency reset if pool was zero
       this.startWaitingPhase();
       return;
     }
 
-    const { winner, rakePercent, rakeAmount, payout } = outcome;
+    // Read system config for bot rake fee (default 5%)
+    let rakePercent = 5.0;
+    try {
+      const config = await getSystemConfig();
+      if (typeof config.arenaBotRakePercent === 'number') {
+        rakePercent = config.arenaBotRakePercent;
+      }
+    } catch (e) {}
+
+    const rates = getCachedRates();
+    const tonPrice = rates.tonPriceUsd || 1.515;
+    const starsPrice = rates.starsPriceUsd || 0.0130;
+
+    const totalTon = this.currentRound.totalTonPool;
+    const totalStars = this.currentRound.totalStarsPool;
+
+    // Calculate 5% bot rake and winner payout for TON & Stars
+    const rakeTon = +(totalTon * (rakePercent / 100)).toFixed(4);
+    const rakeStars = Math.floor(totalStars * (rakePercent / 100));
+    const payoutTon = +(totalTon - rakeTon).toFixed(4);
+    const payoutStars = totalStars - rakeStars;
+    const payoutUsd = +(payoutTon * tonPrice + payoutStars * starsPrice).toFixed(2);
+    const rakeUsd = +(rakeTon * tonPrice + rakeStars * starsPrice).toFixed(2);
+
+    const { winner } = outcome;
     const allWonRelics = this.currentRound.bets.flatMap(b => b.relics);
 
-    this.currentRound.status = 'ROUND_RESOLVING';
-    this.currentRound.winningTicket = winningValue;
-    this.currentRound.winningPlayerId = winner.playerId;
-    this.currentRound.winner = {
+    const roundWinner: RoundWinner = {
       playerId: winner.playerId,
       username: winner.username,
       avatar: winner.avatar,
       color: winner.color,
       winProbability: winner.winProbability,
-      payout,
-      rakeAmount,
+      payout: payoutUsd,
+      payoutTon,
+      payoutStars,
+      payoutUsd,
+      rakeAmount: rakeUsd,
+      rakeTon,
+      rakeStars,
       rakePercent,
       wonRelics: allWonRelics
     };
 
-    // Authoritative 2D Air Hockey Trajectory (guarantees identical playback in live match and video replay)
+    this.currentRound.status = 'ROUND_RESOLVING';
+    this.currentRound.winningTicket = winningValue;
+    this.currentRound.winningPlayerId = winner.playerId;
+    this.currentRound.winner = roundWinner;
+
+    // Credit winner's in-app wallet immediately in Neon PostgreSQL if human player
+    if (!winner.isBot) {
+      try {
+        await updateUserWallet(winner.playerId, prev => ({
+          tonBalance: +(prev.tonBalance + payoutTon).toFixed(4),
+          starsBalance: prev.starsBalance + payoutStars
+        }));
+
+        await recordLedgerTransaction({
+          id: `win_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          userId: winner.playerId,
+          type: 'GAME_WIN_PAYOUT',
+          amountTon: payoutTon,
+          amountStars: payoutStars,
+          status: 'CONFIRMED',
+          comment: `Won Area PvP Round #${this.currentRound.roundId} (Payout: ${payoutTon} TON, ${payoutStars} Stars)`,
+          createdAt: Date.now()
+        });
+      } catch (err) {
+        console.error('Error crediting winner wallet in database:', err);
+      }
+    }
+
+    // Save game round into Neon Postgres
+    recordGameRound({
+      id: `area_${this.currentRound.roundId}`,
+      gameId: 'arena',
+      userId: winner.playerId,
+      betAmount: Math.round(this.currentRound.totalPool),
+      payoutAmount: Math.round(payoutUsd),
+      multiplier: +(payoutUsd / (winner.totalBet || 1)).toFixed(2),
+      status: 'WIN',
+      serverSeed: this.provablyFairKeys.serverSeed,
+      serverSeedHash: this.provablyFairKeys.seedHash,
+      clientSeed: String(winningValue),
+      gameDetails: {
+        roundId: this.currentRound.roundId,
+        winnerUsername: winner.username,
+        payoutTon,
+        payoutStars,
+        payoutUsd,
+        rakeTon,
+        rakeStars,
+        rakePercent,
+        totalTon,
+        totalStars,
+        playersCount: this.currentRound.bets.length
+      }
+    }).catch(e => console.error('Error saving area round to DB:', e));
+
+    // Authoritative 2D Air Hockey Trajectory
     try {
       const territories = computeProportionalTerritories(this.currentRound.bets, 460, 460);
       const traj = simulateAirHockeyFlight(
@@ -525,10 +713,8 @@ export class ArenaGameEngine {
       console.error('Error generating round trajectory:', e);
     }
 
-    // Broadcast resolving phase (client runs ball physics + camera zoom)
     this.broadcastState();
 
-    // Trigger resolution delay (10s)
     setTimeout(() => {
       this.celebrateWinner(winningValue);
     }, this.RESOLUTION_MS);
@@ -540,11 +726,12 @@ export class ArenaGameEngine {
 
     const winner = this.currentRound.winner!;
 
-    // Save to history (including the exact deterministic trajectory)
     const historyItem: RoundHistoryItem = {
       roundId: this.currentRound.roundId,
       poolTier: this.currentRound.poolTier,
       totalPool: this.currentRound.totalPool,
+      totalTonPool: this.currentRound.totalTonPool,
+      totalStarsPool: this.currentRound.totalStarsPool,
       playerCount: this.currentRound.bets.length,
       players: this.currentRound.bets.map(b => ({ ...b })),
       winner: { ...winner },
@@ -561,13 +748,12 @@ export class ArenaGameEngine {
     if (this.history.length > 50) this.history.pop();
     this.persistHistory();
 
-    // Broadcast celebration
     this.broadcastState();
 
-    // AI Commentary evaluation
+    // AI Commentary
     const isUnderdog = winner.winProbability <= 0.15;
     const isWhale = winner.winProbability >= 0.75;
-    const isSpike = this.currentRound.totalPool >= 3000;
+    const isSpike = this.currentRound.totalPool >= 15;
 
     let eventType: 'UNDERDOG_WIN' | 'WHALE_DOMINATION' | 'POT_SPIKE' | 'CLOSE_CALL' = 'CLOSE_CALL';
     if (isUnderdog) eventType = 'UNDERDOG_WIN';
@@ -593,7 +779,6 @@ export class ArenaGameEngine {
       });
     });
 
-    // Schedule next round after celebration period
     setTimeout(() => {
       this.startWaitingPhase();
     }, this.CELEBRATION_MS);
@@ -602,7 +787,7 @@ export class ArenaGameEngine {
   private broadcastState() {
     this.callbacks.broadcast({
       type: 'ROUND_STATE',
-      state: this.currentRound,
+      state: this.getState(),
       history: this.history
     });
   }

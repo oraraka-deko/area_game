@@ -40,39 +40,75 @@ import { recordGameOutcome } from './utils/gameRecord.js';
 import {
   initTelegramApp,
   getTelegramUser,
-  setupTelegramBackButton
+  setupTelegramBackButton,
+  haptic
 } from './utils/telegram.js';
 
-// Default starting user profile
+// Default starting user profile (Starts with zero TON and zero Stars until deposited)
 const INITIAL_USER: UserProfile = {
   id: 'usr_om3sgry',
   username: 'NeoGlitch',
   avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-  credits: 2500,
-  inventory: [
-    { id: 'rel_init_1', name: 'Bronze Talisman', rarity: 'common', value: 25, icon: '🥉', color: '#cd7f32' },
-    { id: 'rel_init_2', name: 'Silver Chalice', rarity: 'rare', value: 150, icon: '🏆', color: '#cbd5e1' },
-    { id: 'rel_init_3', name: 'Neon Prism', rarity: 'epic', value: 750, icon: '🔮', color: '#c084fc' }
-  ]
+  credits: 0,
+  tonBalance: 0,
+  starsBalance: 0,
+  inventory: [],
+  stats: {
+    roundsPlayed: 0,
+    roundsWon: 0,
+    totalWagered: 0,
+    biggestWin: 0
+  }
 };
 
 export default function App() {
   // Navigation & Game State
   const [currentTab, setCurrentTab] = useState<NavTab>('games');
   const [selectedGame, setSelectedGame] = useState<GameId | null>(null);
+  const [enabledGames, setEnabledGames] = useState<{
+    arena: boolean;
+    mines: boolean;
+    crush: boolean;
+    cases: boolean;
+    bumper: boolean;
+  }>({
+    arena: true,
+    mines: true,
+    crush: true,
+    cases: true,
+    bumper: true
+  });
 
   // User state
   const [user, setUser] = useState<UserProfile>(() => {
     const saved = safeStorage.getItem('arena_user_profile');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...INITIAL_USER,
+          ...parsed,
+          tonBalance: parsed.tonBalance !== undefined ? parsed.tonBalance : 1.5,
+          starsBalance: parsed.starsBalance !== undefined ? parsed.starsBalance : 150
+        };
       } catch (e) {
         return INITIAL_USER;
       }
     }
     return INITIAL_USER;
   });
+
+  // Load Game Modes Config
+  useEffect(() => {
+    fetch('/api/games/config')
+      .then(r => r.json())
+      .then(d => {
+        if (d.enabledGames) {
+          setEnabledGames(d.enabledGames);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Telegram WebApp Initialization
   useEffect(() => {
@@ -94,7 +130,7 @@ export default function App() {
   const [showGiftsCatalogModal, setShowGiftsCatalogModal] = useState<boolean>(false);
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
 
-  const [isAdmin, setIsAdmin] = useState<boolean>(true);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   // Sync In-App Wallet and user from Neon PostgreSQL server on mount
   useEffect(() => {
@@ -159,6 +195,8 @@ export default function App() {
     poolTier: 'STANDARD',
     serverSeedHash: 'e880fa31b9920194812398418abdf62901239129031203912039120391203912',
     totalPool: 0,
+    totalTonPool: 0,
+    totalStarsPool: 0,
     bets: [],
     timeRemainingMs: 20000,
     roundDurationMs: 20000,
@@ -289,45 +327,16 @@ export default function App() {
 
               // If current user is the winner, credit payout to balance and add won relics
               if (data.state.winner && data.state.winner.playerId === user.id) {
-                const payout = data.state.winner.payout;
+                const payoutTon = data.state.winner.payoutTon || 0;
+                const payoutStars = data.state.winner.payoutStars || 0;
                 const wonRelics = data.state.winner.wonRelics || [];
+
                 setUser(prev => ({
                   ...prev,
-                  credits: +(prev.credits + payout).toFixed(2),
+                  tonBalance: +(prev.tonBalance + payoutTon).toFixed(4),
+                  starsBalance: prev.starsBalance + payoutStars,
                   inventory: [...prev.inventory, ...wonRelics]
                 }));
-
-                const myBet = data.state.bets.find((b: any) => b.playerId === user.id)?.amount || 0;
-                recordGameOutcome({
-                  id: `arena_${data.state.roundId}`,
-                  gameId: 'territory-arena',
-                  userId: user.id,
-                  betAmount: myBet,
-                  payoutAmount: payout,
-                  multiplier: myBet > 0 ? +(payout / myBet).toFixed(2) : 1,
-                  status: 'WIN',
-                  serverSeed: data.state.serverSeed,
-                  serverSeedHash: data.state.serverSeedHash,
-                  clientSeed: data.state.clientSeed,
-                  gameDetails: { roundId: data.state.roundId, totalPool: data.state.totalPool }
-                });
-              } else {
-                const myBet = data.state.bets.find((b: any) => b.playerId === user.id)?.amount;
-                if (myBet) {
-                  recordGameOutcome({
-                    id: `arena_${data.state.roundId}`,
-                    gameId: 'territory-arena',
-                    userId: user.id,
-                    betAmount: myBet,
-                    payoutAmount: 0,
-                    multiplier: 0,
-                    status: 'LOSS',
-                    serverSeed: data.state.serverSeed,
-                    serverSeedHash: data.state.serverSeedHash,
-                    clientSeed: data.state.clientSeed,
-                    gameDetails: { roundId: data.state.roundId, totalPool: data.state.totalPool }
-                  });
-                }
               }
             } else if (data.state.status === 'BETTING_OPEN' && prevStatusRef.current === 'WINNER_CELEBRATION') {
               setShowVictoryModal(false);
@@ -335,6 +344,16 @@ export default function App() {
             }
 
             prevStatusRef.current = data.state.status;
+          } else if (data.type === 'CANCEL_BET_RESPONSE') {
+            if (data.success) {
+              sound.playVictory();
+              haptic.notification('success');
+              setUser(prev => ({
+                ...prev,
+                tonBalance: +(prev.tonBalance + (data.refundedTon || 0)).toFixed(4),
+                starsBalance: prev.starsBalance + (data.refundedStars || 0)
+              }));
+            }
           } else if (data.type === 'TIME_TICK') {
             setRoundState(prev => ({
               ...prev,
@@ -395,15 +414,23 @@ export default function App() {
     }));
   };
 
-  // Place Bet in Area PvP
-  const handlePlaceBet = (creditAmount: number, relics: Relic[]) => {
+  // Place Bet in Area PvP (supports TON or Telegram Stars)
+  const handlePlaceBet = (currency: 'ton' | 'stars', amount: number, relics: Relic[]) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    setUser(prev => ({
-      ...prev,
-      credits: +(prev.credits - creditAmount).toFixed(2),
-      inventory: prev.inventory.filter(item => !relics.some(r => r.id === item.id))
-    }));
+    if (currency === 'ton') {
+      setUser(prev => ({
+        ...prev,
+        tonBalance: +(prev.tonBalance - amount).toFixed(4),
+        inventory: prev.inventory.filter(item => !relics.some(r => r.id === item.id))
+      }));
+    } else {
+      setUser(prev => ({
+        ...prev,
+        starsBalance: Math.max(0, prev.starsBalance - Math.floor(amount)),
+        inventory: prev.inventory.filter(item => !relics.some(r => r.id === item.id))
+      }));
+    }
 
     setSelectedRelics([]);
 
@@ -412,10 +439,41 @@ export default function App() {
       playerId: user.id,
       username: user.username,
       avatar: user.avatar,
-      color: '#ccff00',
-      creditAmount,
+      color: '#06b6d4',
+      currency,
+      amount,
       relics
     }));
+  };
+
+  // Cancel Bet & Refund in Area PvP (when alone in waiting phase)
+  const handleCancelBet = async () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'CANCEL_BET',
+        playerId: user.id
+      }));
+    } else {
+      try {
+        const res = await fetch('/api/area/cancel-bet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playerId: user.id })
+        });
+        const data = await res.json();
+        if (data.success) {
+          sound.playVictory();
+          haptic.notification('success');
+          setUser(prev => ({
+            ...prev,
+            tonBalance: +(prev.tonBalance + (data.refundedTon || 0)).toFixed(4),
+            starsBalance: prev.starsBalance + (data.refundedStars || 0)
+          }));
+        }
+      } catch (e) {
+        console.error('Error cancelling bet:', e);
+      }
+    }
   };
 
   const handleToggleRelic = (relic: Relic) => {
@@ -491,8 +549,9 @@ export default function App() {
             /* Main Menu with Game Posters */
             <GameHub
               onSelectGame={(id) => setSelectedGame(id)}
-              activePot={roundState.totalPool || 1250}
+              activePot={roundState.totalPool || 15.5}
               onlinePlayers={roundState.bets.length + 142}
+              enabledGames={enabledGames}
             />
           ) : selectedGame === 'area_pvp' ? (
             /* Area PvP Air Hockey Showdown */
@@ -514,18 +573,21 @@ export default function App() {
                     onOpenRelicPicker={() => setShowRelicPicker(true)}
                     onRemoveRelic={handleRemoveRelic}
                     onPlaceBet={handlePlaceBet}
+                    onCancelBet={handleCancelBet}
                     onStartRound={handleStartRound}
                   />
 
-                  <DevControls
-                    roundState={roundState}
-                    onAddRandomPlayer={handleAddRandomPlayer}
-                    onStartRound={handleStartRound}
-                    onRollNow={handleRollNow}
-                    onResetRound={handleResetRound}
-                    autoStart={autoStart}
-                    onToggleAutoStart={handleToggleAutoStart}
-                  />
+                  {isAdmin && (
+                    <DevControls
+                      roundState={roundState}
+                      onAddRandomPlayer={handleAddRandomPlayer}
+                      onStartRound={handleStartRound}
+                      onRollNow={handleRollNow}
+                      onResetRound={handleResetRound}
+                      autoStart={autoStart}
+                      onToggleAutoStart={handleToggleAutoStart}
+                    />
+                  )}
 
                   <PlayerRoster
                     bets={roundState.bets}

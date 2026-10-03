@@ -490,7 +490,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           </div>
         </div>
 
-        {/* Balance Showcase Bar */}
+        {/* Balance Showcase Bar: Pure TON & Stars */}
         <div className="grid grid-cols-3 gap-2 p-3 bg-[#121522] border-b border-white/5">
           {/* TON Balance */}
           <div className="p-2.5 rounded-2xl bg-black/40 border border-cyan-500/20 flex flex-col">
@@ -516,15 +516,15 @@ export const WalletModal: React.FC<WalletModalProps> = ({
             </div>
           </div>
 
-          {/* Credits Balance */}
-          <div className="p-2.5 rounded-2xl bg-black/40 border border-[#ccff00]/20 flex flex-col">
+          {/* Estimated Net Worth */}
+          <div className="p-2.5 rounded-2xl bg-black/40 border border-purple-500/20 flex flex-col">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono uppercase text-[#ccff00] font-bold flex items-center gap-1">
-                <span>🪙 Credits</span>
+              <span className="text-[10px] font-mono uppercase text-purple-300 font-bold flex items-center gap-1">
+                <span>💵 Est. USD</span>
               </span>
             </div>
             <div className="text-base font-black font-mono text-white mt-1 truncate">
-              {wallet.credits.toFixed(0)}
+              ${(wallet.tonBalance * 1.515 + wallet.starsBalance * 0.013).toFixed(2)}
             </div>
           </div>
         </div>
@@ -538,7 +538,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
             }}
             className={`flex-1 py-2 rounded-t-xl transition flex items-center justify-center gap-1.5 ${
               activeTab === 'DEPOSIT'
-                ? 'bg-[#0f121d] text-[#ccff00] border-t-2 border-[#ccff00]'
+                ? 'bg-[#0f121d] text-cyan-400 border-t-2 border-cyan-400'
                 : 'text-white/60 hover:text-white'
             }`}
           >
@@ -553,27 +553,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({
             }}
             className={`flex-1 py-2 rounded-t-xl transition flex items-center justify-center gap-1.5 ${
               activeTab === 'WITHDRAW'
-                ? 'bg-[#0f121d] text-cyan-400 border-t-2 border-cyan-400'
+                ? 'bg-[#0f121d] text-emerald-400 border-t-2 border-emerald-400'
                 : 'text-white/60 hover:text-white'
             }`}
           >
             <ArrowUpRight className="w-3.5 h-3.5" />
             <span>Withdraw</span>
-          </button>
-
-          <button
-            onClick={() => {
-              haptic.selection();
-              setActiveTab('OVERVIEW');
-            }}
-            className={`flex-1 py-2 rounded-t-xl transition flex items-center justify-center gap-1.5 ${
-              activeTab === 'OVERVIEW'
-                ? 'bg-[#0f121d] text-purple-400 border-t-2 border-purple-400'
-                : 'text-white/60 hover:text-white'
-            }`}
-          >
-            <Coins className="w-3.5 h-3.5" />
-            <span>Exchange</span>
           </button>
 
           <button
@@ -588,7 +573,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Ledger</span>
+            <span>Transactions</span>
           </button>
         </div>
 

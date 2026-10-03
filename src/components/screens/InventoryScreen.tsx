@@ -72,7 +72,7 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
     haptic.impact('medium');
     setUser(prev => ({
       ...prev,
-      credits: +(prev.credits + value).toFixed(2),
+      tonBalance: +(prev.tonBalance + value).toFixed(4),
       inventory: prev.inventory.filter(r => r.id !== relicId)
     }));
     sound.playClick();

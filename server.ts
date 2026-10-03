@@ -24,6 +24,7 @@ import {
   addUserGift,
   recordGameRound,
   getUserGameHistory,
+  getAllGameRounds,
   recordTaskClaim,
   getUserClaimedTasks,
   recordActivityLog,
@@ -32,6 +33,7 @@ import {
   LedgerTransaction,
   UserGiftItem
 } from './server/db.js';
+import { fetchLiveRates, getCachedRates } from './server/rates.js';
 import {
   verifyDepositOnChain,
   createStarsInvoiceLink,
@@ -97,6 +99,8 @@ wss.on('connection', (ws: WebSocket) => {
           username: msg.username,
           avatar: msg.avatar,
           color: msg.color,
+          currency: msg.currency,
+          amount: msg.amount,
           creditAmount: msg.creditAmount,
           relics: msg.relics
         });
@@ -105,6 +109,16 @@ wss.on('connection', (ws: WebSocket) => {
           success: result.success,
           error: result.error
         }));
+      } else if (msg.type === 'CANCEL_BET') {
+        gameEngine.cancelBet(msg.playerId).then(cancelRes => {
+          ws.send(JSON.stringify({
+            type: 'CANCEL_BET_RESPONSE',
+            success: cancelRes.success,
+            error: cancelRes.error,
+            refundedTon: cancelRes.refundedTon,
+            refundedStars: cancelRes.refundedStars
+          }));
+        });
       } else if (msg.type === 'CHAT_MESSAGE') {
         if (msg.text && typeof msg.text === 'string' && msg.text.trim()) {
           const chatMsg: ChatMessage = {
@@ -243,8 +257,7 @@ app.get('/api/wallet/info', async (req, res) => {
     const isUserAdmin =
       config.adminTelegramIds.includes(userId) ||
       config.adminTelegramIds.includes(username) ||
-      (process.env.ADMIN_ID && (process.env.ADMIN_ID === userId || process.env.ADMIN_ID === username)) ||
-      !isProd;
+      (process.env.ADMIN_ID ? (process.env.ADMIN_ID === userId || process.env.ADMIN_ID === username) : false);
 
     res.json({
       wallet: { ...wallet, isAdmin: isUserAdmin },
@@ -581,9 +594,31 @@ app.get('/api/gifts/catalog', (req, res) => {
     const end = start + (Number(limit) || 50);
     const paginated = filtered.slice(start, end);
 
+    const rates = getCachedRates();
+    const tonPrice = rates.tonPriceUsd || 1.515;
+    const starsPrice = rates.starsPriceUsd || 0.0130;
+
+    const enriched = paginated.map(g => {
+      const floorTon = +(g.price_stars * starsPrice / tonPrice).toFixed(3);
+      const floorUsd = +(g.price_stars * starsPrice).toFixed(2);
+      const topModel = g.sample_models?.[0]?.name || g.name.replace('Telegram Gift #', 'Model #');
+      const bgCenter = g.sample_backdrops?.[0]?.center_color || '#8b5cf6';
+      const bgEdge = g.sample_backdrops?.[0]?.edge_color || '#3b82f6';
+
+      return {
+        ...g,
+        floor_price_ton: floorTon,
+        floor_price_usd: floorUsd,
+        top_model: topModel,
+        bg_center: bgCenter,
+        bg_edge: bgEdge,
+        backdrop_gradient: `linear-gradient(135deg, ${bgCenter} 0%, ${bgEdge} 100%)`
+      };
+    });
+
     res.json({
       total: filtered.length,
-      gifts: paginated
+      gifts: enriched
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -694,7 +729,16 @@ app.get('/api/admin/config', async (req, res) => {
       botStarsToken: config.botStarsToken ? `${config.botStarsToken.slice(0, 10)}...` : '',
       isTestnet: config.isTestnet,
       adminTelegramIds: config.adminTelegramIds,
-      neonConfigured: Boolean(config.neonConnectionString)
+      neonConfigured: Boolean(config.neonConnectionString),
+      starsPriceUsd: config.starsPriceUsd || 0.0130,
+      arenaBotRakePercent: config.arenaBotRakePercent ?? 5.0,
+      enabledGames: config.enabledGames || {
+        arena: true,
+        mines: true,
+        crush: true,
+        cases: true,
+        bumper: true
+      }
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -710,7 +754,10 @@ app.post('/api/admin/config', async (req, res) => {
       botStarsToken,
       toncenterApiKey,
       neonConnectionString,
-      adminTelegramIds
+      adminTelegramIds,
+      starsPriceUsd,
+      arenaBotRakePercent,
+      enabledGames
     } = req.body;
 
     const patch: any = {};
@@ -721,9 +768,67 @@ app.post('/api/admin/config', async (req, res) => {
     if (toncenterApiKey !== undefined && !toncenterApiKey.includes('•••')) patch.toncenterApiKey = toncenterApiKey.trim();
     if (neonConnectionString !== undefined) patch.neonConnectionString = neonConnectionString.trim();
     if (Array.isArray(adminTelegramIds)) patch.adminTelegramIds = adminTelegramIds;
+    if (typeof starsPriceUsd === 'number' && starsPriceUsd > 0) patch.starsPriceUsd = starsPriceUsd;
+    if (typeof arenaBotRakePercent === 'number' && arenaBotRakePercent >= 0) patch.arenaBotRakePercent = arenaBotRakePercent;
+    if (enabledGames && typeof enabledGames === 'object') patch.enabledGames = enabledGames;
 
     const updated = await updateSystemConfig(patch);
     res.json({ success: true, config: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Real-time TON price & Telegram Stars rates endpoint
+app.get('/api/rates', async (req, res) => {
+  try {
+    const rates = await fetchLiveRates();
+    res.json(rates);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Game Settings endpoint for client checking enabled game modes
+app.get('/api/games/config', async (req, res) => {
+  try {
+    const config = await getSystemConfig();
+    const rates = await fetchLiveRates();
+    res.json({
+      enabledGames: config.enabledGames || {
+        arena: true,
+        mines: true,
+        crush: true,
+        cases: true,
+        bumper: true
+      },
+      starsPriceUsd: config.starsPriceUsd || 0.0130,
+      arenaBotRakePercent: config.arenaBotRakePercent ?? 5.0,
+      tonPriceUsd: rates.tonPriceUsd
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Area Game Cancel Bet Endpoint (when only 1 player joined after 1 min)
+app.post('/api/area/cancel-bet', async (req, res) => {
+  try {
+    const { playerId } = req.body;
+    if (!playerId) return res.status(400).json({ error: 'playerId is required' });
+    const result = await gameEngine.cancelBet(playerId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin served games history & financials static view
+app.get('/api/admin/games-history', async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 100;
+    const history = await getAllGameRounds(limit);
+    res.json({ history });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -768,46 +873,81 @@ app.post('/api/user/sync', async (req, res) => {
   }
 });
 
-// Record game round into Neon Postgres
+// Record game round into Neon Postgres & sync in-app wallet
 app.post('/api/games/record', async (req, res) => {
   try {
-    const { id, gameId, userId, betAmount, payoutAmount, multiplier, status, serverSeed, serverSeedHash, clientSeed, gameDetails } = req.body;
+    const {
+      id,
+      gameId,
+      userId,
+      currency = 'stars',
+      betAmount,
+      payoutAmount,
+      multiplier,
+      status,
+      serverSeed,
+      serverSeedHash,
+      clientSeed,
+      gameDetails
+    } = req.body;
+
     if (!gameId || !userId) {
       return res.status(400).json({ error: 'gameId and userId are required' });
     }
+
+    const bet = Number(betAmount) || 0;
+    const payout = Number(payoutAmount) || 0;
+    const net = +(payout - bet).toFixed(4);
 
     const roundId = id || `rnd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await recordGameRound({
       id: roundId,
       gameId,
       userId,
-      betAmount: Number(betAmount) || 0,
-      payoutAmount: Number(payoutAmount) || 0,
+      betAmount: bet,
+      payoutAmount: payout,
       multiplier: Number(multiplier) || 0,
-      status: status || 'COMPLETED',
+      status: status || (payout > bet ? 'WIN' : 'LOSS'),
       serverSeed,
       serverSeedHash,
       clientSeed,
-      gameDetails
+      gameDetails: {
+        ...(gameDetails || {}),
+        currency,
+        betAmount: bet,
+        payoutAmount: payout
+      }
     });
 
-    // Also record game ledger transaction if net outcome != 0
-    const netWin = (Number(payoutAmount) || 0) - (Number(betAmount) || 0);
-    if (netWin !== 0) {
+    // Update internal in-app wallet balances based on currency
+    let updatedWallet;
+    if (currency === 'ton') {
+      updatedWallet = await updateUserWallet(userId, prev => ({
+        tonBalance: +(Math.max(0, prev.tonBalance + net)).toFixed(4)
+      }));
+    } else {
+      updatedWallet = await updateUserWallet(userId, prev => ({
+        starsBalance: Math.max(0, Math.floor(prev.starsBalance + net))
+      }));
+    }
+
+    // Also record game ledger transaction
+    if (net !== 0) {
       await recordLedgerTransaction({
         id: `tx_${roundId}`,
         userId,
-        type: netWin > 0 ? 'GAME_WIN' : 'GAME_BET',
-        amountCredits: Math.abs(netWin),
+        type: net > 0 ? 'GAME_WIN' : 'GAME_BET',
+        amountTon: currency === 'ton' ? Math.abs(net) : undefined,
+        amountStars: currency === 'stars' ? Math.abs(net) : undefined,
         status: 'CONFIRMED',
-        comment: `${gameId} ${netWin > 0 ? 'win' : 'loss'} (multiplier: ${multiplier}x)`,
+        comment: `${gameId} ${net > 0 ? 'win' : 'loss'} (multiplier: ${multiplier}x, currency: ${currency})`,
         createdAt: Date.now(),
         confirmedAt: Date.now()
       });
     }
 
-    await recordActivityLog(userId, 'GAME_PLAYED', { gameId, betAmount, payoutAmount, multiplier });
-    res.json({ success: true, roundId });
+    await recordActivityLog(userId, 'GAME_PLAYED', { gameId, currency, betAmount: bet, payoutAmount: payout, multiplier });
+    res.json({ success: true, roundId, wallet: updatedWallet });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

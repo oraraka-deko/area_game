@@ -15,7 +15,8 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animRef = useRef<number | null>(null);
 
-  const [betAmount, setBetAmount] = useState<number>(50);
+  const [currency, setCurrency] = useState<'ton' | 'stars'>('ton');
+  const [betAmount, setBetAmount] = useState<number>(0.2);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [hasCashedOut, setHasCashedOut] = useState<boolean>(false);
   const [multiplier, setMultiplier] = useState<number>(1.00);
@@ -27,19 +28,33 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
   const startTimeRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(false);
 
+  const currentBalance = currency === 'ton' ? (user.tonBalance || 0) : (user.starsBalance || 0);
+
+  const handleCurrencyChange = (newCurr: 'ton' | 'stars') => {
+    if (isPlaying) return;
+    setCurrency(newCurr);
+    setBetAmount(newCurr === 'ton' ? 0.2 : 25);
+    haptic.selection();
+  };
+
   const handleStartFlight = () => {
-    if (user.credits < betAmount || isPlaying) {
+    if (currentBalance < betAmount || isPlaying) {
       sound.playBettingClosed();
       haptic.notification('error');
       return;
     }
 
-    // Deduct bet
-    setUser(prev => ({ ...prev, credits: +(prev.credits - betAmount).toFixed(2) }));
+    // Deduct bet from chosen currency
+    if (currency === 'ton') {
+      setUser(prev => ({ ...prev, tonBalance: +(prev.tonBalance - betAmount).toFixed(4) }));
+    } else {
+      setUser(prev => ({ ...prev, starsBalance: Math.max(0, prev.starsBalance - Math.floor(betAmount)) }));
+    }
+
     sound.playBetPlaced();
     haptic.impact('medium');
 
-    // Generate provably fair crash point (E.g., 1.05x to 15.0x with 3% house edge)
+    // Generate provably fair crash point (E.g., 1.05x to 25.0x with 3% house edge)
     const r = Math.random();
     let crash = +(0.97 / (1.0 - r * 0.94)).toFixed(2);
     if (crash < 1.02) crash = 1.02;
@@ -60,8 +75,13 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
   const handleCashout = () => {
     if (!isPlayingRef.current || hasCashedOut || crashed) return;
 
-    const win = +(betAmount * currentMultRef.current).toFixed(2);
-    setUser(prev => ({ ...prev, credits: +(prev.credits + win).toFixed(2) }));
+    const win = +(betAmount * currentMultRef.current).toFixed(currency === 'ton' ? 4 : 0);
+    if (currency === 'ton') {
+      setUser(prev => ({ ...prev, tonBalance: +(prev.tonBalance + win).toFixed(4) }));
+    } else {
+      setUser(prev => ({ ...prev, starsBalance: prev.starsBalance + Math.floor(win) }));
+    }
+
     sound.playVictory();
     haptic.notification('success');
 
@@ -71,11 +91,12 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
     recordGameOutcome({
       gameId: 'crush',
       userId: user.id,
+      currency,
       betAmount,
       payoutAmount: win,
       multiplier: currentMultRef.current,
       status: 'WIN',
-      gameDetails: { cashedAt: currentMultRef.current, crashPoint: crashPointRef.current }
+      gameDetails: { cashedAt: currentMultRef.current, crashPoint: crashPointRef.current, currency }
     });
   };
 
@@ -98,13 +119,13 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
       // Grid background
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 1;
-      for (let x = 30; x < W; x += 40) {
+      for (let x = 0; x < W; x += 40) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, H);
         ctx.stroke();
       }
-      for (let y = 30; y < H; y += 40) {
+      for (let y = 0; y < H; y += 40) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(W, y);
@@ -113,12 +134,11 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
 
       if (isPlayingRef.current) {
         const elapsed = (now - startTimeRef.current) / 1000;
-        // Multiplier grows exponentially: 1.00 + 0.15 * t^1.7
-        const current = +(1.00 + 0.22 * Math.pow(elapsed, 1.8)).toFixed(2);
+        // Exponential growth: starts fast then escalates
+        const current = +(1.0 + Math.pow(elapsed * 0.42, 1.75)).toFixed(2);
         currentMultRef.current = current;
         setMultiplier(current);
 
-        // Check crash
         if (current >= crashPointRef.current) {
           isPlayingRef.current = false;
           setIsPlaying(false);
@@ -130,47 +150,55 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
             recordGameOutcome({
               gameId: 'crush',
               userId: user.id,
+              currency,
               betAmount,
               payoutAmount: 0,
               multiplier: 0,
               status: 'LOSS',
-              gameDetails: { crashedAt: current, crashPoint: crashPointRef.current }
+              gameDetails: { crashPoint: crashPointRef.current, currency }
             });
           }
         }
 
-        // Draw parabolic flight curve
-        const progressX = Math.min(W - 40, 20 + elapsed * 38);
-        const progressY = Math.max(30, H - 20 - Math.pow(elapsed * 4.5, 1.6));
+        // Draw trajectory curve
+        const progress = Math.min(1.0, elapsed / 8.0);
+        const startX = 20;
+        const startY = H - 20;
+        const targetX = startX + progress * (W - 60);
+        const targetY = startY - Math.min(H - 40, (current - 1.0) * 35);
 
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = 4;
-        ctx.shadowColor = '#10b981';
-        ctx.shadowBlur = 12;
+        const grad = ctx.createLinearGradient(startX, startY, targetX, targetY);
+        grad.addColorStop(0, '#06b6d4');
+        grad.addColorStop(1, crashed ? '#f43f5e' : '#10b981');
 
         ctx.beginPath();
-        ctx.moveTo(20, H - 20);
-        ctx.quadraticCurveTo((20 + progressX) / 2, H - 20, progressX, progressY);
+        ctx.moveTo(startX, startY);
+        ctx.quadraticCurveTo(startX + (targetX - startX) * 0.5, startY, targetX, targetY);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 4;
         ctx.stroke();
-        ctx.shadowBlur = 0;
 
-        // Draw Rocket Marker
+        // Draw rocket head
         ctx.save();
-        ctx.translate(progressX, progressY);
-        ctx.rotate(-0.4);
-        ctx.font = '24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🚀', 0, 0);
+        ctx.translate(targetX, targetY);
+        ctx.fillStyle = crashed ? '#f43f5e' : '#10b981';
+        ctx.beginPath();
+        ctx.arc(0, 0, 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Rocket exhaust particles
+        if (!crashed) {
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.7)';
+          ctx.beginPath();
+          ctx.arc(-8, 3, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.restore();
       } else {
-        // Static baseline
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(20, H - 20);
-        ctx.lineTo(W - 20, H - 20);
-        ctx.stroke();
+        // Idle state graphic
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.font = '12px monospace';
+        ctx.fillText('WAITING FOR IGNITION...', W / 2 - 80, H / 2);
       }
 
       animRef.current = requestAnimationFrame(render);
@@ -183,6 +211,9 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
   }, []);
+
+  const tonPresets = [0.05, 0.1, 0.2, 0.5, 1.0];
+  const starsPresets = [10, 25, 50, 100, 250];
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col gap-4 pb-8 px-3">
@@ -197,9 +228,9 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-white/50 font-mono">Balance:</span>
-          <span className="text-sm font-black font-mono text-[#ccff00]">
-            {user.credits.toFixed(2)} 🪙
+          <span className="text-xs text-white/50 font-mono">In-App Balance:</span>
+          <span className="text-sm font-black font-mono text-cyan-300">
+            {currency === 'ton' ? `${(user.tonBalance || 0).toFixed(2)} TON` : `${(user.starsBalance || 0).toLocaleString()} ⭐`}
           </span>
         </div>
       </div>
@@ -213,18 +244,40 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
           </div>
           <div
             className={`text-5xl font-black font-mono tracking-tight mt-1 transition-colors ${
-              crashed ? 'text-rose-500 animate-pulse' : (hasCashedOut ? 'text-[#ccff00]' : 'text-emerald-400')
+              crashed ? 'text-rose-500 animate-pulse' : (hasCashedOut ? 'text-cyan-300' : 'text-emerald-400')
             }`}
           >
             {multiplier.toFixed(2)}x
           </div>
           {hasCashedOut && (
-            <div className="text-xs font-mono font-bold text-[#ccff00] mt-1 flex items-center justify-center gap-1">
+            <div className="text-xs font-mono font-bold text-cyan-300 mt-1 flex items-center justify-center gap-1">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Cashed out: +{wonAmount.toFixed(2)} 🪙</span>
+              <span>Cashed out: +{wonAmount} {currency === 'ton' ? 'TON' : '⭐'}</span>
             </div>
           )}
         </div>
+
+        {/* Currency Switcher */}
+        {!isPlaying && (
+          <div className="flex items-center justify-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 mx-auto w-fit">
+            <button
+              onClick={() => handleCurrencyChange('ton')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                currency === 'ton' ? 'bg-cyan-500 text-black shadow' : 'text-white/60 hover:text-white'
+              }`}
+            >
+              💎 TON
+            </button>
+            <button
+              onClick={() => handleCurrencyChange('stars')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                currency === 'stars' ? 'bg-amber-400 text-black shadow' : 'text-white/60 hover:text-white'
+              }`}
+            >
+              ⭐ Stars
+            </button>
+          </div>
+        )}
 
         {/* Rocket Canvas */}
         <div className="relative w-full aspect-[16/9] rounded-2xl bg-[#090b12] border border-white/10 overflow-hidden">
@@ -242,10 +295,10 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
             {/* Bet Picker */}
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">
-                Select Bet Amount
+                Select Bet Amount ({currency === 'ton' ? 'TON' : 'Stars'})
               </span>
-              <div className="flex items-center gap-1 bg-black/40 rounded-xl p-1 border border-white/5">
-                {[25, 50, 100, 250, 500].map(amt => (
+              <div className="flex items-center gap-1 bg-black/40 rounded-xl p-1 border border-white/5 overflow-x-auto scrollbar-none">
+                {(currency === 'ton' ? tonPresets : starsPresets).map(amt => (
                   <button
                     key={amt}
                     onClick={() => {
@@ -254,7 +307,7 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
                     }}
                     className={`flex-1 py-1 text-[11px] font-mono rounded-lg transition ${
                       betAmount === amt
-                        ? 'bg-emerald-400 text-black font-black'
+                        ? currency === 'ton' ? 'bg-cyan-500 text-black font-black' : 'bg-amber-400 text-black font-black'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
@@ -266,10 +319,21 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
 
             <button
               onClick={handleStartFlight}
-              className="w-full py-3.5 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-black font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg shadow-emerald-400/20 flex items-center justify-center gap-2"
+              disabled={currentBalance < betAmount}
+              className={`w-full py-3.5 rounded-2xl font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg flex items-center justify-center gap-2 ${
+                currentBalance >= betAmount
+                  ? currency === 'ton'
+                    ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-black hover:brightness-110 shadow-cyan-400/20'
+                    : 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black hover:brightness-110 shadow-amber-400/20'
+                  : 'bg-white/10 text-white/30 cursor-not-allowed'
+              }`}
             >
               <Rocket className="w-4 h-4 fill-current" />
-              <span>Launch Rocket ({betAmount} 🪙)</span>
+              <span>
+                {currentBalance >= betAmount
+                  ? `Launch Rocket (${betAmount} ${currency === 'ton' ? 'TON' : '⭐'})`
+                  : 'Insufficient Balance'}
+              </span>
             </button>
           </div>
         ) : (
@@ -278,12 +342,12 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
             onClick={handleCashout}
             className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg ${
               !hasCashedOut
-                ? 'bg-[#ccff00] hover:bg-[#b8e600] text-black shadow-[#ccff00]/30'
+                ? 'bg-emerald-400 hover:bg-emerald-300 text-black shadow-emerald-400/30'
                 : 'bg-white/10 text-white/40 cursor-not-allowed'
             }`}
           >
             {!hasCashedOut
-              ? `CASH OUT (+${(betAmount * multiplier).toFixed(2)} 🪙)`
+              ? `CASH OUT (+${(betAmount * multiplier).toFixed(currency === 'ton' ? 3 : 0)} ${currency === 'ton' ? 'TON' : '⭐'})`
               : 'CASHED OUT ✅'}
           </button>
         )}

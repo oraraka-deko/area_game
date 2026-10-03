@@ -99,13 +99,20 @@ export const PoolInfo: React.FC<PoolInfoProps> = ({
               {/* Huge Pool Value */}
               <div className="flex items-baseline gap-1.5 mt-0.5">
                 <span className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-mono">
-                  {roundState.totalPool.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
+                  ${(roundState.totalPool || 0).toFixed(2)}
                 </span>
-                <span className="text-xs font-semibold text-white/50 tracking-wider">
-                  CREDITS
+                <span className="text-xs font-semibold text-cyan-400 tracking-wider">
+                  USD POOL
+                </span>
+              </div>
+              <div className="text-[11px] font-mono text-white/50 flex items-center gap-1.5 mt-0.5">
+                <span>Wagers:</span>
+                <span className="text-cyan-300 font-bold">
+                  {(roundState.totalTonPool || 0).toFixed(2)} TON
+                </span>
+                <span>•</span>
+                <span className="text-amber-400 font-bold">
+                  {(roundState.totalStarsPool || 0).toLocaleString()} Stars
                 </span>
               </div>
             </div>

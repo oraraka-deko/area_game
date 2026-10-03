@@ -30,9 +30,9 @@ export async function initDatabase(): Promise<void> {
         id VARCHAR(128) PRIMARY KEY,
         username VARCHAR(128) NOT NULL,
         avatar TEXT,
-        credits BIGINT NOT NULL DEFAULT 2500,
+        credits BIGINT NOT NULL DEFAULT 0,
         ton_balance NUMERIC(20, 9) NOT NULL DEFAULT 0,
-        stars_balance BIGINT NOT NULL DEFAULT 100,
+        stars_balance BIGINT NOT NULL DEFAULT 0,
         connected_wallet VARCHAR(128),
         inventory JSONB NOT NULL DEFAULT '[]'::jsonb,
         stats JSONB NOT NULL DEFAULT '{"roundsPlayed":0,"roundsWon":0,"totalWagered":0,"biggestWin":0}'::jsonb,
@@ -135,6 +135,15 @@ export interface SystemConfig {
   botStarsToken: string;
   isTestnet: boolean;
   neonConnectionString?: string;
+  starsPriceUsd: number;
+  arenaBotRakePercent: number;
+  enabledGames: {
+    arena: boolean;
+    mines: boolean;
+    crush: boolean;
+    cases: boolean;
+    bumper: boolean;
+  };
 }
 
 // Resolve admin IDs from Cloud Run secret / environment variable
@@ -151,7 +160,16 @@ export const DEFAULT_CONFIG: SystemConfig = {
   toncenterApiKeyTestnet: process.env.TONCENTER_API_KEY_TESTNET || '2372c82211e6c16b1f5ce63e048239d9b022bc20416c17e09cec127197e52cb7',
   botStarsToken: process.env.BOT_STARS_TOKEN || '8903710651:AAEGEg0vKNsPOV62yc2reqv_EqCLckKsI2Y',
   isTestnet: process.env.TON_IS_TESTNET === 'true',
-  neonConnectionString: NEON_URL
+  neonConnectionString: NEON_URL,
+  starsPriceUsd: 0.0130, // Official Telegram Creator Cashout ~$0.0130 - $0.0133
+  arenaBotRakePercent: 5.0, // 5% house rake paid by winner to bot
+  enabledGames: {
+    arena: true,
+    mines: true,
+    crush: true,
+    cases: true,
+    bumper: true
+  }
 };
 
 // Rate Limiter for TonCenter API: max 10 requests per second
@@ -281,7 +299,9 @@ export interface LedgerTransaction {
     | 'GIFT_DEPOSIT'
     | 'TASK_CLAIM'
     | 'GAME_WIN'
-    | 'GAME_BET';
+    | 'GAME_WIN_PAYOUT'
+    | 'GAME_BET'
+    | 'BET_REFUND';
   amountTon?: number;
   amountStars?: number;
   amountCredits?: number;
@@ -314,10 +334,10 @@ export async function getUserWallet(userId: string, defaultUsername = 'Player'):
       };
     }
 
-    // Insert new user into Postgres
+    // Insert new user into Postgres with 0 starting balance until deposit
     const insertRes = await pgPool.query(
       `INSERT INTO users (id, username, credits, ton_balance, stars_balance)
-       VALUES ($1, $2, 2500, 0, 100)
+       VALUES ($1, $2, 0, 0, 0)
        RETURNING *`,
       [userId, defaultUsername]
     );
@@ -328,8 +348,8 @@ export async function getUserWallet(userId: string, defaultUsername = 'Player'):
       username: r.username,
       avatar: r.avatar,
       tonBalance: 0,
-      starsBalance: 100,
-      credits: 2500,
+      starsBalance: 0,
+      credits: 0,
       connectedWallet: r.connected_wallet,
       inventory: [],
       stats: {},
@@ -650,6 +670,35 @@ export async function getUserGameHistory(userId: string, limit = 30): Promise<an
     }));
   } catch (err) {
     console.error('Error fetching game history from Postgres:', err);
+    return [];
+  }
+}
+
+// Fetch all game rounds served across the platform for Admin Audit & Static History
+export async function getAllGameRounds(limit = 100): Promise<any[]> {
+  try {
+    const res = await pgPool.query(
+      `SELECT * FROM game_rounds
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    return res.rows.map(r => ({
+      id: r.id,
+      gameId: r.game_id,
+      userId: r.user_id,
+      betAmount: parseFloat(r.bet_amount || '0'),
+      payoutAmount: parseFloat(r.payout_amount || '0'),
+      multiplier: parseFloat(r.multiplier || '1'),
+      status: r.status,
+      serverSeed: r.server_seed,
+      serverSeedHash: r.server_seed_hash,
+      clientSeed: r.client_seed,
+      gameDetails: r.game_details || {},
+      createdAt: new Date(r.created_at).getTime()
+    }));
+  } catch (err) {
+    console.error('Error fetching all game history from Postgres:', err);
     return [];
   }
 }

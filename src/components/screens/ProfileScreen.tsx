@@ -40,6 +40,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   const referralLink = `https://t.me/ArenaPvPBot?start=ref_${user.id}`;
 
+  const userTon = wallet ? wallet.tonBalance : (user.tonBalance || 0);
+  const userStars = wallet ? wallet.starsBalance : (user.starsBalance || 0);
+
+  // Pro status unlocked only after depositing or accumulating at least 50 TON or 50,000 Stars
+  const isPro =
+    userTon >= 50 ||
+    userStars >= 50000 ||
+    Boolean(user.stats?.totalDepositedTon && user.stats.totalDepositedTon >= 50) ||
+    Boolean(user.stats?.totalDepositedStars && user.stats.totalDepositedStars >= 50000);
+
   const handleCopyReferral = () => {
     navigator.clipboard.writeText(referralLink);
     sound.playClick();
@@ -69,15 +79,19 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               <h2 className="text-lg font-black text-white truncate">
                 {user.username}
               </h2>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#ccff00]/20 text-[#ccff00] border border-[#ccff00]/40">
-                PRO
-              </span>
+              {isPro && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#ccff00]/20 text-[#ccff00] border border-[#ccff00]/40">
+                  PRO
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-white/50 font-mono mt-0.5">
               Telegram ID: {user.id}
             </div>
-            <div className="text-xs font-mono font-black text-[#ccff00] mt-1">
-              Credits: {user.credits.toFixed(0)} 🪙
+            <div className="flex items-center gap-2 text-xs font-mono font-bold mt-1">
+              <span className="text-cyan-300">💎 {userTon.toFixed(2)} TON</span>
+              <span className="text-white/30">•</span>
+              <span className="text-amber-400">⭐ {userStars.toLocaleString()} Stars</span>
             </div>
           </div>
         </div>
@@ -115,7 +129,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between">
               <span className="text-white/50 font-mono">Stars:</span>
               <span className="font-mono font-black text-amber-400">
-                {wallet ? wallet.starsBalance.toLocaleString() : '100'} ⭐
+                {wallet ? wallet.starsBalance.toLocaleString() : '0'} ⭐
               </span>
             </div>
           </div>
@@ -206,19 +220,25 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         )}
       </div>
 
-      {/* Lifetime Stats */}
+      {/* Real Lifetime Stats */}
       <div className="grid grid-cols-3 gap-2">
         <div className="p-3 rounded-2xl border border-white/5 bg-[#121422] text-center">
           <div className="text-[10px] text-white/40 font-mono uppercase">Matches</div>
-          <div className="text-lg font-black font-mono text-white mt-0.5">148</div>
+          <div className="text-lg font-black font-mono text-white mt-0.5">
+            {user.stats?.roundsPlayed || 0}
+          </div>
         </div>
         <div className="p-3 rounded-2xl border border-white/5 bg-[#121422] text-center">
-          <div className="text-[10px] text-white/40 font-mono uppercase">Win Rate</div>
-          <div className="text-lg font-black font-mono text-emerald-400 mt-0.5">42.8%</div>
+          <div className="text-[10px] text-white/40 font-mono uppercase">Won</div>
+          <div className="text-lg font-black font-mono text-emerald-400 mt-0.5">
+            {user.stats?.roundsWon || 0}
+          </div>
         </div>
         <div className="p-3 rounded-2xl border border-white/5 bg-[#121422] text-center">
-          <div className="text-[10px] text-white/40 font-mono uppercase">Won Total</div>
-          <div className="text-lg font-black font-mono text-[#ccff00] mt-0.5">14.2k 🪙</div>
+          <div className="text-[10px] text-white/40 font-mono uppercase">Wagered</div>
+          <div className="text-lg font-black font-mono text-cyan-300 mt-0.5">
+            ${(user.stats?.totalWagered || 0).toFixed(2)}
+          </div>
         </div>
       </div>
 

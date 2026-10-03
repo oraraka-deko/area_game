@@ -99,7 +99,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ user, setUser }) => {
       });
       const data = await res.json();
       if (data.success) {
-        setUser(prev => ({ ...prev, credits: +(prev.credits + reward).toFixed(2) }));
+        setUser(prev => ({ ...prev, starsBalance: (prev.starsBalance || 0) + reward }));
         setDailyClaimed(true);
         sound.playVictory();
         haptic.notification('success');
@@ -141,7 +141,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ user, setUser }) => {
       });
       const data = await res.json();
       if (data.success) {
-        setUser(u => ({ ...u, credits: +(u.credits + task.reward).toFixed(2) }));
+        setUser(u => ({ ...u, starsBalance: (u.starsBalance || 0) + task.reward }));
         sound.playVictory();
         haptic.notification('success');
         setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, isClaimed: true } : t)));

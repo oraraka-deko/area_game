@@ -29,26 +29,41 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animRef = useRef<number | null>(null);
 
-  const [betAmount, setBetAmount] = useState<number>(50);
+  const [currency, setCurrency] = useState<'ton' | 'stars'>('ton');
+  const [betAmount, setBetAmount] = useState<number>(0.2);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [winnerName, setWinnerName] = useState<string | null>(null);
-  const [wonCredits, setWonCredits] = useState<number>(0);
+  const [wonAmount, setWonAmount] = useState<number>(0);
 
   const pucksRef = useRef<BumperPuck[]>([]);
   const isPlayingRef = useRef<boolean>(false);
 
+  const currentBalance = currency === 'ton' ? (user.tonBalance || 0) : (user.starsBalance || 0);
+
   const ARENA_RADIUS = 150;
   const ARENA_CENTER = 170;
 
+  const handleCurrencyChange = (newCurr: 'ton' | 'stars') => {
+    if (isPlaying) return;
+    setCurrency(newCurr);
+    setBetAmount(newCurr === 'ton' ? 0.2 : 25);
+    haptic.selection();
+  };
+
   const handleStartBattle = () => {
-    if (user.credits < betAmount || isPlaying) {
+    if (currentBalance < betAmount || isPlaying) {
       sound.playBettingClosed();
       haptic.notification('error');
       return;
     }
 
-    // Deduct bet
-    setUser(prev => ({ ...prev, credits: +(prev.credits - betAmount).toFixed(2) }));
+    // Deduct bet from chosen balance
+    if (currency === 'ton') {
+      setUser(prev => ({ ...prev, tonBalance: +(prev.tonBalance - betAmount).toFixed(4) }));
+    } else {
+      setUser(prev => ({ ...prev, starsBalance: Math.max(0, prev.starsBalance - Math.floor(betAmount)) }));
+    }
+
     sound.playBetPlaced();
     haptic.impact('medium');
 
@@ -57,7 +72,7 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
         id: 'user',
         name: user.username,
         avatar: user.avatar,
-        color: '#ccff00',
+        color: '#06b6d4',
         x: ARENA_CENTER - 60,
         y: ARENA_CENTER,
         vx: (Math.random() - 0.5) * 200,
@@ -81,7 +96,7 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
       {
         id: 'bot_beta',
         name: 'CyberKong',
-        color: '#0ea5e9',
+        color: '#a855f7',
         x: ARENA_CENTER,
         y: ARENA_CENTER - 60,
         vx: (Math.random() - 0.5) * 200,
@@ -92,8 +107,8 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
       },
       {
         id: 'bot_gamma',
-        name: 'GigaChad',
-        color: '#a855f7',
+        name: 'NeonBlitz',
+        color: '#f59e0b',
         x: ARENA_CENTER,
         y: ARENA_CENTER + 60,
         vx: (Math.random() - 0.5) * 200,
@@ -106,88 +121,76 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
 
     pucksRef.current = competitors;
     isPlayingRef.current = true;
-    setWinnerName(null);
-    setWonCredits(0);
     setIsPlaying(true);
+    setWinnerName(null);
+    setWonAmount(0);
   };
 
-  // 2D Sumo Physics Simulation Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let running = true;
     let lastTime = performance.now();
+    let running = true;
 
     const render = (now: number) => {
       if (!running) return;
 
-      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
-      const W = canvas.width;
-      const H = canvas.height;
-      ctx.clearRect(0, 0, W, H);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 1. Draw Circular Sumo Arena Ring
+      // 1. Draw Ring Platform
       ctx.save();
-      // Outer drop zone
-      ctx.fillStyle = '#0a0b12';
-      ctx.fillRect(0, 0, W, H);
-
-      // Arena Circle
       ctx.beginPath();
       ctx.arc(ARENA_CENTER, ARENA_CENTER, ARENA_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = '#141726';
+      ctx.fillStyle = '#0f121d';
       ctx.fill();
-
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 5;
-      ctx.shadowColor = '#f59e0b';
-      ctx.shadowBlur = 12;
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 4;
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      // Ring markings
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(ARENA_CENTER, ARENA_CENTER, ARENA_RADIUS * 0.5, 0, Math.PI * 2);
+      // Platform grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
       ctx.stroke();
       ctx.restore();
 
-      // 2. Update and Collide Pucks
       if (isPlayingRef.current) {
         const pucks = pucksRef.current;
 
-        // Move pucks & apply arena suction / random AI steering
+        // Physics update
         pucks.forEach(p => {
           if (!p.isAlive) return;
 
-          // AI push towards center / opponents
-          const toCenterAngle = Math.atan2(ARENA_CENTER - p.y, ARENA_CENTER - p.x);
-          p.vx += Math.cos(toCenterAngle) * 90 * dt;
-          p.vy += Math.sin(toCenterAngle) * 90 * dt;
+          // Repulsive force towards center
+          const dxCenter = ARENA_CENTER - p.x;
+          const dyCenter = ARENA_CENTER - p.y;
+          const distCenter = Math.hypot(dxCenter, dyCenter);
+
+          // Random agitation force
+          p.vx += (Math.random() - 0.5) * 450 * dt + (dxCenter / (distCenter + 1)) * 30 * dt;
+          p.vy += (Math.random() - 0.5) * 450 * dt + (dyCenter / (distCenter + 1)) * 30 * dt;
+
+          // Drag
+          p.vx *= 0.985;
+          p.vy *= 0.985;
 
           p.x += p.vx * dt;
           p.y += p.vy * dt;
 
-          // Friction
-          p.vx *= 0.985;
-          p.vy *= 0.985;
-
-          // Check if ringed out (fallen off the edge)
-          const distFromCenter = Math.hypot(p.x - ARENA_CENTER, p.y - ARENA_CENTER);
-          if (distFromCenter > ARENA_RADIUS + p.radius) {
+          // Out of arena check
+          if (distCenter > ARENA_RADIUS - p.radius + 8) {
             p.isAlive = false;
             sound.playTick();
             haptic.impact('medium');
           }
         });
 
-        // Pairwise collisions between alive pucks
+        // Puck collisions
         for (let i = 0; i < pucks.length; i++) {
           for (let j = i + 1; j < pucks.length; j++) {
             const p1 = pucks[i];
@@ -197,36 +200,26 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
             const dx = p2.x - p1.x;
             const dy = p2.y - p1.y;
             const dist = Math.hypot(dx, dy);
-            const minDist = p1.radius + p2.radius;
 
-            if (dist < minDist && dist > 0.001) {
+            if (dist < p1.radius + p2.radius) {
               const nx = dx / dist;
               const ny = dy / dist;
 
-              // Separate
-              const overlap = (minDist - dist) / 2;
-              p1.x -= nx * overlap;
-              p1.y -= ny * overlap;
-              p2.x += nx * overlap;
-              p2.y += ny * overlap;
-
-              // Elastic collision impulse
               const kx = p1.vx - p2.vx;
               const ky = p1.vy - p2.vy;
               const p = 2 * (nx * kx + ny * ky) / 2;
 
-              p1.vx -= p * nx * 1.35;
-              p1.vy -= p * ny * 1.35;
-              p2.vx += p * nx * 1.35;
-              p2.vy += p * ny * 1.35;
+              p1.vx -= p * nx * 1.5;
+              p1.vy -= p * ny * 1.5;
+              p2.vx += p * nx * 1.5;
+              p2.vy += p * ny * 1.5;
 
-              sound.playPuckWallHit(0.7);
-              haptic.selection();
+              sound.playClick();
             }
           }
         }
 
-        // Check if only 1 survivor remains
+        // Check Winner
         const alivePucks = pucks.filter(p => p.isAlive);
         if (alivePucks.length <= 1) {
           isPlayingRef.current = false;
@@ -236,20 +229,27 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
           setWinnerName(winner.name);
 
           if (winner.isUser) {
-            const win = +(betAmount * 3.75).toFixed(2);
-            setWonCredits(win);
-            setUser(prev => ({ ...prev, credits: +(prev.credits + win).toFixed(2) }));
+            const win = +(betAmount * 3.75).toFixed(currency === 'ton' ? 4 : 0);
+            setWonAmount(win);
+
+            if (currency === 'ton') {
+              setUser(prev => ({ ...prev, tonBalance: +(prev.tonBalance + win).toFixed(4) }));
+            } else {
+              setUser(prev => ({ ...prev, starsBalance: prev.starsBalance + Math.floor(win) }));
+            }
+
             sound.playVictory();
             haptic.notification('success');
 
             recordGameOutcome({
               gameId: 'bumper',
               userId: user.id,
+              currency,
               betAmount,
               payoutAmount: win,
               multiplier: 3.75,
               status: 'WIN',
-              gameDetails: { survivor: winner.name }
+              gameDetails: { survivor: winner.name, currency }
             });
           } else {
             sound.playBettingClosed();
@@ -258,17 +258,18 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
             recordGameOutcome({
               gameId: 'bumper',
               userId: user.id,
+              currency,
               betAmount,
               payoutAmount: 0,
               multiplier: 0,
               status: 'LOSS',
-              gameDetails: { survivor: winner.name }
+              gameDetails: { survivor: winner.name, currency }
             });
           }
         }
       }
 
-      // 3. Draw Pucks
+      // Draw Pucks
       pucksRef.current.forEach(p => {
         if (!p.isAlive) return;
 
@@ -302,7 +303,10 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
       running = false;
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, []);
+  }, [currency, betAmount]);
+
+  const tonPresets = [0.05, 0.1, 0.2, 0.5, 1.0];
+  const starsPresets = [10, 25, 50, 100, 250];
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col gap-4 pb-8 px-3">
@@ -317,9 +321,9 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-white/50 font-mono">Balance:</span>
-          <span className="text-sm font-black font-mono text-[#ccff00]">
-            {user.credits.toFixed(2)} 🪙
+          <span className="text-xs text-white/50 font-mono">In-App Balance:</span>
+          <span className="text-sm font-black font-mono text-cyan-300">
+            {currency === 'ton' ? `${(user.tonBalance || 0).toFixed(2)} TON` : `${(user.starsBalance || 0).toLocaleString()} ⭐`}
           </span>
         </div>
       </div>
@@ -337,12 +341,34 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
           </div>
 
           <div className="text-right">
-            <div className="text-[10px] text-white/40 font-mono">Winner Pot</div>
+            <div className="text-[10px] text-white/40 font-mono">Winner 3.75x Pot</div>
             <div className="text-sm font-black font-mono text-amber-400">
-              +{(betAmount * 3.75).toFixed(2)} 🪙
+              +{(betAmount * 3.75).toFixed(currency === 'ton' ? 3 : 0)} {currency === 'ton' ? 'TON' : '⭐'}
             </div>
           </div>
         </div>
+
+        {/* Currency Switcher */}
+        {!isPlaying && (
+          <div className="flex items-center justify-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 w-fit">
+            <button
+              onClick={() => handleCurrencyChange('ton')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                currency === 'ton' ? 'bg-cyan-500 text-black shadow' : 'text-white/60 hover:text-white'
+              }`}
+            >
+              💎 TON
+            </button>
+            <button
+              onClick={() => handleCurrencyChange('stars')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                currency === 'stars' ? 'bg-amber-400 text-black shadow' : 'text-white/60 hover:text-white'
+              }`}
+            >
+              ⭐ Stars
+            </button>
+          </div>
+        )}
 
         {/* Sumo Canvas Ring */}
         <div className="relative w-full max-w-[340px] aspect-square rounded-2xl overflow-hidden border border-white/10 shadow-inner bg-black">
@@ -356,13 +382,13 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
 
         {/* Winner Banner */}
         {winnerName && (
-          <div className="w-full p-3 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-center">
+          <div className="w-full p-3 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-center animate-in zoom-in-95 duration-200">
             <div className="text-xs text-amber-300 font-bold">
               👑 Champion: {winnerName}!
             </div>
-            {wonCredits > 0 ? (
-              <div className="text-sm font-black text-[#ccff00] mt-0.5">
-                You won +{wonCredits.toFixed(2)} Credits!
+            {wonAmount > 0 ? (
+              <div className="text-sm font-black text-cyan-300 mt-0.5">
+                You won +{wonAmount} {currency === 'ton' ? 'TON' : '⭐'}!
               </div>
             ) : (
               <div className="text-xs text-white/60 mt-0.5">
@@ -377,10 +403,10 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
           <div className="w-full flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">
-                Select Bet Amount
+                Select Bet Amount ({currency === 'ton' ? 'TON' : 'Stars'})
               </span>
-              <div className="flex items-center gap-1 bg-black/40 rounded-xl p-1 border border-white/5">
-                {[25, 50, 100, 250].map(amt => (
+              <div className="flex items-center gap-1 bg-black/40 rounded-xl p-1 border border-white/5 overflow-x-auto scrollbar-none">
+                {(currency === 'ton' ? tonPresets : starsPresets).map(amt => (
                   <button
                     key={amt}
                     onClick={() => {
@@ -389,7 +415,7 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
                     }}
                     className={`flex-1 py-1 text-[11px] font-mono rounded-lg transition ${
                       betAmount === amt
-                        ? 'bg-amber-400 text-black font-black'
+                        ? currency === 'ton' ? 'bg-cyan-500 text-black font-black' : 'bg-amber-400 text-black font-black'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
@@ -401,10 +427,21 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
 
             <button
               onClick={handleStartBattle}
-              className="w-full py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg shadow-amber-400/20 flex items-center justify-center gap-2"
+              disabled={currentBalance < betAmount}
+              className={`w-full py-3.5 rounded-2xl font-black text-sm uppercase tracking-wider transition active:scale-95 shadow-lg flex items-center justify-center gap-2 ${
+                currentBalance >= betAmount
+                  ? currency === 'ton'
+                    ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-black hover:brightness-110 shadow-cyan-400/20'
+                    : 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black hover:brightness-110 shadow-amber-400/20'
+                  : 'bg-white/10 text-white/30 cursor-not-allowed'
+              }`}
             >
               <Play className="w-4 h-4 fill-current ml-0.5" />
-              <span>Enter Sumo Battle ({betAmount} 🪙)</span>
+              <span>
+                {currentBalance >= betAmount
+                  ? `Enter Sumo Battle (${betAmount} ${currency === 'ton' ? 'TON' : '⭐'})`
+                  : 'Insufficient Balance'}
+              </span>
             </button>
           </div>
         ) : (
