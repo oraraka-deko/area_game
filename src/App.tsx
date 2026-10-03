@@ -94,6 +94,8 @@ export default function App() {
   const [showGiftsCatalogModal, setShowGiftsCatalogModal] = useState<boolean>(false);
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
 
+  const [isAdmin, setIsAdmin] = useState<boolean>(true);
+
   // Sync In-App Wallet and user from Neon PostgreSQL server on mount
   useEffect(() => {
     fetch(`/api/wallet/info?userId=${user.id}&username=${encodeURIComponent(user.username)}`)
@@ -103,12 +105,12 @@ export default function App() {
           setWallet(data.wallet);
           setUser(prev => ({ ...prev, credits: data.wallet.credits }));
         }
+        if (typeof data.isAdmin === 'boolean') {
+          setIsAdmin(data.isAdmin);
+        }
       })
       .catch(console.error);
   }, [user.id]);
-
-  // Guest users and test release users have direct access to Admin Panel
-  const isAdmin = true;
 
   // Telegram BackButton Synchronization
   useEffect(() => {

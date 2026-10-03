@@ -137,14 +137,20 @@ export interface SystemConfig {
   neonConnectionString?: string;
 }
 
+// Resolve admin IDs from Cloud Run secret / environment variable
+const envAdminIds = (process.env.ADMIN_ID || process.env.ADMIN_TELEGRAM_IDS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
 export const DEFAULT_CONFIG: SystemConfig = {
-  adminTelegramIds: ['8903710651', 'mojolojo275', 'admin', 'usr_om3sgry'],
-  depositWalletAddress: 'EQBvW8Z5huBkMJYdnF64PT5fqJZW2elETRRFFsA-b281bf20',
-  hotWalletMnemonic: '',
-  toncenterApiKey: '4b6bd05c1bb6b913cd8790c8400f2d4f43845cc0117ceaff5f16466d651f3323',
-  toncenterApiKeyTestnet: '2372c82211e6c16b1f5ce63e048239d9b022bc20416c17e09cec127197e52cb7',
-  botStarsToken: '8903710651:AAEGEg0vKNsPOV62yc2reqv_EqCLckKsI2Y',
-  isTestnet: false,
+  adminTelegramIds: Array.from(new Set(['8903710651', 'mojolojo275', 'admin', 'usr_om3sgry', ...envAdminIds])),
+  depositWalletAddress: process.env.DEPOSIT_WALLET_ADDRESS || 'EQBvW8Z5huBkMJYdnF64PT5fqJZW2elETRRFFsA-b281bf20',
+  hotWalletMnemonic: process.env.HOT_WALLET_MNEMONIC || '',
+  toncenterApiKey: process.env.TONCENTER_API_KEY || '4b6bd05c1bb6b913cd8790c8400f2d4f43845cc0117ceaff5f16466d651f3323',
+  toncenterApiKeyTestnet: process.env.TONCENTER_API_KEY_TESTNET || '2372c82211e6c16b1f5ce63e048239d9b022bc20416c17e09cec127197e52cb7',
+  botStarsToken: process.env.BOT_STARS_TOKEN || '8903710651:AAEGEg0vKNsPOV62yc2reqv_EqCLckKsI2Y',
+  isTestnet: process.env.TON_IS_TESTNET === 'true',
   neonConnectionString: NEON_URL
 };
 
@@ -206,7 +212,9 @@ export async function getSystemConfig(): Promise<SystemConfig> {
   try {
     const pgRes = await pgPool.query('SELECT value FROM system_config WHERE key = $1', ['system_main']);
     if (pgRes.rows.length > 0) {
-      return { ...DEFAULT_CONFIG, ...pgRes.rows[0].value };
+      const saved = pgRes.rows[0].value;
+      const mergedAdmins = Array.from(new Set([...(saved.adminTelegramIds || []), ...DEFAULT_CONFIG.adminTelegramIds]));
+      return { ...DEFAULT_CONFIG, ...saved, adminTelegramIds: mergedAdmins };
     }
   } catch (err) {
     console.warn('Could not read config from Postgres, trying Redis:', err);
@@ -215,7 +223,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
   try {
     const data = await redis.get<SystemConfig>('config:system');
     if (data) {
-      return { ...DEFAULT_CONFIG, ...data };
+      const mergedAdmins = Array.from(new Set([...(data.adminTelegramIds || []), ...DEFAULT_CONFIG.adminTelegramIds]));
+      return { ...DEFAULT_CONFIG, ...data, adminTelegramIds: mergedAdmins };
     }
   } catch (err) {
     console.error('Error fetching system config from Redis, falling back to default:', err);

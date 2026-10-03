@@ -44,7 +44,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isProd = process.env.NODE_ENV === 'production';
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 const app = express();
 app.use(express.json());
@@ -239,7 +239,18 @@ app.get('/api/wallet/info', async (req, res) => {
     const username = (req.query.username as string) || 'Player';
     const wallet = await getUserWallet(userId, username);
     const transactions = await getUserTransactions(userId);
-    res.json({ wallet, transactions });
+    const config = await getSystemConfig();
+    const isUserAdmin =
+      config.adminTelegramIds.includes(userId) ||
+      config.adminTelegramIds.includes(username) ||
+      (process.env.ADMIN_ID && (process.env.ADMIN_ID === userId || process.env.ADMIN_ID === username)) ||
+      !isProd;
+
+    res.json({
+      wallet: { ...wallet, isAdmin: isUserAdmin },
+      transactions,
+      isAdmin: isUserAdmin
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to get wallet' });
   }
