@@ -3,6 +3,7 @@ import { sound } from '../../utils/audio.js';
 import { haptic } from '../../utils/telegram.js';
 import { UserProfile, Relic, RelicRarity } from '../../types/game.js';
 import { ArrowLeft, Gift, Sparkles, Box, Trophy } from 'lucide-react';
+import { recordGameOutcome } from '../../utils/gameRecord.js';
 
 interface CasesGameProps {
   user: UserProfile;
@@ -142,6 +143,17 @@ export const CasesGame: React.FC<CasesGameProps> = ({ user, setUser, onBack }) =
         ...prev,
         inventory: [...prev.inventory, newRelic]
       }));
+
+      // Record to Neon Postgres
+      recordGameOutcome({
+        gameId: 'cases',
+        userId: user.id,
+        betAmount: selectedCase.price,
+        payoutAmount: winner.value,
+        multiplier: +(winner.value / selectedCase.price).toFixed(2),
+        status: winner.value >= selectedCase.price ? 'WIN' : 'LOSS',
+        gameDetails: { caseId: selectedCase.id, itemName: winner.name, rarity: winner.rarity }
+      });
     }, 4700);
   };
 

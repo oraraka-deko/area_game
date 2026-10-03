@@ -3,6 +3,7 @@ import { sound } from '../../utils/audio.js';
 import { haptic } from '../../utils/telegram.js';
 import { UserProfile } from '../../types/game.js';
 import { ArrowLeft, Rocket, Flame, AlertTriangle, Sparkles } from 'lucide-react';
+import { recordGameOutcome } from '../../utils/gameRecord.js';
 
 interface CrushGameProps {
   user: UserProfile;
@@ -66,6 +67,16 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
 
     setWonAmount(win);
     setHasCashedOut(true);
+
+    recordGameOutcome({
+      gameId: 'crush',
+      userId: user.id,
+      betAmount,
+      payoutAmount: win,
+      multiplier: currentMultRef.current,
+      status: 'WIN',
+      gameDetails: { cashedAt: currentMultRef.current, crashPoint: crashPointRef.current }
+    });
   };
 
   // Canvas Rocket Flight Curve Loop
@@ -114,6 +125,18 @@ export const CrushGame: React.FC<CrushGameProps> = ({ user, setUser, onBack }) =
           setCrashed(true);
           sound.playBettingClosed();
           haptic.notification('error');
+
+          if (!hasCashedOut) {
+            recordGameOutcome({
+              gameId: 'crush',
+              userId: user.id,
+              betAmount,
+              payoutAmount: 0,
+              multiplier: 0,
+              status: 'LOSS',
+              gameDetails: { crashedAt: current, crashPoint: crashPointRef.current }
+            });
+          }
         }
 
         // Draw parabolic flight curve

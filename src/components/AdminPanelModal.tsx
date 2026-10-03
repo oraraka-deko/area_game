@@ -14,7 +14,10 @@ import {
   Server,
   Terminal,
   Send,
-  Lock
+  Lock,
+  Coins,
+  Gamepad2,
+  Users
 } from 'lucide-react';
 
 interface AdminPanelModalProps {
@@ -28,7 +31,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onClose,
   userId
 }) => {
-  const [activeTab, setActiveTab] = useState<'CONFIG' | 'HOT_WALLET' | 'STATS' | 'AUDIT'>('CONFIG');
+  const [activeTab, setActiveTab] = useState<'CONFIG' | 'HOT_WALLET' | 'DATABASE' | 'STATS' | 'AUDIT'>('CONFIG');
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -44,6 +47,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   // Live Stats
   const [stats, setStats] = useState<any>(null);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -63,6 +67,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         setBotToken(data.botStarsToken || '');
         setIsTestnet(Boolean(data.isTestnet));
         setAdminIds(Array.isArray(data.adminTelegramIds) ? data.adminTelegramIds.join(', ') : '');
+        setNeonConn(data.neonConnectionString || '');
       }
     } catch (err) {
       console.error('Error loading admin config:', err);
@@ -76,6 +81,12 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       const res = await fetch('/api/admin/stats');
       const data = await res.json();
       setStats(data);
+
+      const logsRes = await fetch('/api/admin/activity-logs');
+      const logsData = await logsRes.json();
+      if (Array.isArray(logsData.logs)) {
+        setActivityLogs(logsData.logs);
+      }
     } catch (err) {
       console.error('Error loading admin stats:', err);
     }
@@ -121,131 +132,138 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-
       const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to update config');
+      if (data.success) {
+        setMessage({ type: 'success', text: 'System configuration updated & saved to database!' });
+        sound.playVictory();
+        haptic.notification('success');
+        loadStats();
+      } else {
+        throw new Error(data.error || 'Failed to update configuration');
       }
-
-      sound.playVictory();
-      haptic.notification('success');
-      setMessage({ type: 'success', text: 'Admin configuration saved successfully!' });
-      loadStats();
-      setTimeout(() => setMessage(null), 3000);
     } catch (err: any) {
-      haptic.notification('error');
       setMessage({ type: 'error', text: err.message || 'Save failed' });
+      sound.playBettingClosed();
+      haptic.notification('error');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-xl bg-[#0d101a] border-t sm:border border-purple-500/30 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-md animate-fadeIn select-none">
+      <div className="relative w-full max-w-lg bg-[#0e111a] border border-purple-500/30 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#141828]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-950/40 via-black to-blue-950/30">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
               <Shield className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                <span>Admin Vault & Operations</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                  ROOT
+              <h2 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                Production Control Center
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
+                  LIVE
                 </span>
               </h2>
-              <div className="text-[10px] text-white/50 font-mono">
-                Deposit Addresses • Hot Wallet Keys • TonCenter API Limiter
-              </div>
+              <p className="text-[11px] text-white/50 font-mono">Neon PostgreSQL & On-Chain Hub</p>
             </div>
           </div>
-
           <button
             onClick={() => {
-              haptic.selection();
+              sound.playClick();
               onClose();
             }}
-            className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-white/10 bg-[#111422] px-3 pt-2 gap-1 text-xs font-bold">
+        <div className="grid grid-cols-5 p-2 bg-black/40 border-b border-white/5 text-[10px] font-bold uppercase tracking-wider gap-1">
           <button
-            onClick={() => setActiveTab('CONFIG')}
-            className={`py-2 px-3 rounded-t-xl transition flex items-center gap-1.5 ${
-              activeTab === 'CONFIG'
-                ? 'bg-[#0d101a] text-purple-400 border-t-2 border-purple-400'
-                : 'text-white/60 hover:text-white'
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('CONFIG');
+            }}
+            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
+              activeTab === 'CONFIG' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
             }`}
           >
             <Key className="w-3.5 h-3.5" />
-            <span>Deposit & Keys</span>
+            <span>Config</span>
           </button>
-
           <button
-            onClick={() => setActiveTab('HOT_WALLET')}
-            className={`py-2 px-3 rounded-t-xl transition flex items-center gap-1.5 ${
-              activeTab === 'HOT_WALLET'
-                ? 'bg-[#0d101a] text-cyan-400 border-t-2 border-cyan-400'
-                : 'text-white/60 hover:text-white'
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('DATABASE');
+            }}
+            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
+              activeTab === 'DATABASE' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>Neon DB</span>
+          </button>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('HOT_WALLET');
+            }}
+            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
+              activeTab === 'HOT_WALLET' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
             <span>Hot Wallet</span>
           </button>
-
           <button
-            onClick={() => setActiveTab('STATS')}
-            className={`py-2 px-3 rounded-t-xl transition flex items-center gap-1.5 ${
-              activeTab === 'STATS'
-                ? 'bg-[#0d101a] text-[#ccff00] border-t-2 border-[#ccff00]'
-                : 'text-white/60 hover:text-white'
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('STATS');
+              loadStats();
+            }}
+            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
+              activeTab === 'STATS' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>Rate Limiter & Node</span>
+            <span>Metrics</span>
           </button>
-
           <button
-            onClick={() => setActiveTab('AUDIT')}
-            className={`py-2 px-3 rounded-t-xl transition flex items-center gap-1.5 ${
-              activeTab === 'AUDIT'
-                ? 'bg-[#0d101a] text-amber-400 border-t-2 border-amber-400'
-                : 'text-white/60 hover:text-white'
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('AUDIT');
+              loadStats();
+            }}
+            className={`py-2 rounded-xl transition flex flex-col items-center gap-1 ${
+              activeTab === 'AUDIT' ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40' : 'text-white/50 hover:bg-white/5'
             }`}
           >
-            <Database className="w-3.5 h-3.5" />
-            <span>Global Ledger</span>
+            <Terminal className="w-3.5 h-3.5" />
+            <span>Audit</span>
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+        {/* Content Body */}
+        <div className="p-4 overflow-y-auto flex-1 text-white">
           {message && (
             <div
-              className={`p-3 rounded-2xl text-xs flex items-center gap-2 border ${
+              className={`p-3 rounded-2xl mb-4 text-xs flex items-center gap-2 ${
                 message.type === 'success'
-                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-                  : 'bg-red-500/10 border-red-500/40 text-red-300'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
               }`}
             >
-              {message.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              )}
+              {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
               <span>{message.text}</span>
             </div>
           )}
 
           {/* TAB: CONFIG */}
           {activeTab === 'CONFIG' && (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3.5">
               <div>
                 <label className="text-[11px] font-bold uppercase text-white/50 mb-1 block">
                   Deposit Receiver TON Address
@@ -258,7 +276,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   placeholder="EQBvW8Z5huBkMJYdnF64PT5fqJZW2elETRRFFsA-b281bf20"
                 />
                 <span className="text-[10px] text-white/40 font-mono mt-1 block">
-                  User TON deposits are sent directly to this address with unique comment.
+                  User TON deposits are directed to this on-chain address with unique comment tag.
                 </span>
               </div>
 
@@ -316,7 +334,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   value={adminIds}
                   onChange={e => setAdminIds(e.target.value)}
                   className="w-full bg-black/40 border border-white/10 rounded-2xl p-2.5 text-xs font-mono text-white outline-none"
-                  placeholder="8903710651, 12345678"
+                  placeholder="8903710651, mojolojo275"
                 />
               </div>
 
@@ -327,6 +345,76 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               >
                 {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 <span>Save Admin Configuration</span>
+              </button>
+            </div>
+          )}
+
+          {/* TAB: DATABASE (NEON POSTGRES) */}
+          {activeTab === 'DATABASE' && (
+            <div className="flex flex-col gap-3.5">
+              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5">
+                <Database className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-emerald-200">
+                  <div className="font-bold flex items-center gap-2">
+                    <span>Neon PostgreSQL Connection</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-400 text-black text-[9px] font-black uppercase">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-200/80 mt-1 leading-relaxed">
+                    Primary productive database for ACID ledgers, balances, bets, claims, and activity logs.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold uppercase text-white/50 mb-1 block">
+                  Postgres Connection String (Neon)
+                </label>
+                <input
+                  type="text"
+                  value={neonConn}
+                  onChange={e => setNeonConn(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-2.5 text-xs font-mono text-cyan-300 outline-none"
+                  placeholder="postgresql://neondb_owner:...@ep-...neon.tech/neondb?sslmode=require"
+                />
+              </div>
+
+              {/* Database Overview Cards */}
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Registered Users</div>
+                  <div className="text-lg font-black text-white mt-1">
+                    {stats?.neonStats?.totalUsers ?? '...'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Total Transactions</div>
+                  <div className="text-lg font-black text-[#ccff00] mt-1">
+                    {stats?.neonStats?.totalTransactions ?? '...'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Total Games Played</div>
+                  <div className="text-lg font-black text-cyan-400 mt-1">
+                    {stats?.neonStats?.totalGamesPlayed ?? '...'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+                  <div className="text-[10px] text-white/40 uppercase font-mono">Task Claims Recorded</div>
+                  <div className="text-lg font-black text-purple-400 mt-1">
+                    {stats?.neonStats?.totalTaskClaims ?? '...'}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSaveConfig}
+                disabled={saving}
+                className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider transition active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50 mt-1"
+              >
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Save Database Settings</span>
               </button>
             </div>
           )}
@@ -356,7 +444,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   placeholder="word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12"
                 />
                 <span className="text-[10px] text-white/40 font-mono mt-1 block">
-                  Encrypted and stored securely in Upstash Redis database.
+                  Stored securely and referenced for instant automated user payouts.
                 </span>
               </div>
 
@@ -395,17 +483,17 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
               <div className="p-3 rounded-2xl bg-[#131627] border border-white/10 flex flex-col gap-2">
                 <div className="text-xs font-bold text-white flex items-center justify-between">
-                  <span>Upstash Redis & Storage</span>
-                  <span className="text-emerald-400 text-[10px] font-mono">ONLINE</span>
+                  <span>Neon PostgreSQL Engine</span>
+                  <span className="text-emerald-400 text-[10px] font-mono font-bold">CONNECTED</span>
                 </div>
                 <div className="text-[11px] font-mono text-white/60">
-                  Endpoint: optimal-adder-314592.upstash.io
+                  Pool: ep-lingering-river-b5z4kwub-pooler
                 </div>
               </div>
 
               <button
                 onClick={loadStats}
-                className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-mono text-xs transition flex items-center justify-center gap-1.5"
+                className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-mono text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Refresh Live Metrics</span>
@@ -413,39 +501,70 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             </div>
           )}
 
-          {/* TAB: AUDIT LEDGER */}
+          {/* TAB: AUDIT LEDGER & ACTIVITY LOGS */}
           {activeTab === 'AUDIT' && (
-            <div className="flex flex-col gap-2">
-              <div className="text-[10px] font-bold uppercase text-white/40 mb-1">
-                Recent System Double-Entry Transactions
+            <div className="flex flex-col gap-3">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-white/40 mb-1.5">
+                  Recent User & System Activity Logs (Neon Postgres)
+                </div>
+                {activityLogs.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-white/40 font-mono border border-dashed border-white/10 rounded-2xl">
+                    No activity logs recorded yet.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto mb-3">
+                    {activityLogs.slice(0, 15).map((log: any) => (
+                      <div
+                        key={log.id}
+                        className="p-2 rounded-xl bg-black/40 border border-white/5 text-[11px] flex items-center justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-mono text-emerald-400 truncate font-bold">
+                            {log.action} <span className="text-white/50 text-[10px]">({log.userId})</span>
+                          </div>
+                          <div className="text-[9px] text-white/40 font-mono">
+                            {new Date(log.createdAt).toLocaleTimeString()} • {JSON.stringify(log.details)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {!stats?.recentTransactions || stats.recentTransactions.length === 0 ? (
-                <div className="p-6 text-center text-xs text-white/40 font-mono border border-dashed border-white/10 rounded-2xl">
-                  No system transactions recorded yet.
+
+              <div>
+                <div className="text-[10px] font-bold uppercase text-white/40 mb-1.5">
+                  Recent Ledger Transactions
                 </div>
-              ) : (
-                <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
-                  {stats.recentTransactions.map((tx: any) => (
-                    <div
-                      key={tx.id}
-                      className="p-2.5 rounded-xl bg-black/40 border border-white/5 text-[11px] flex items-center justify-between"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-mono text-white/80 truncate">
-                          {tx.type} • {tx.userId}
+                {!stats?.recentTransactions || stats.recentTransactions.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-white/40 font-mono border border-dashed border-white/10 rounded-2xl">
+                    No transactions recorded yet.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                    {stats.recentTransactions.map((tx: any) => (
+                      <div
+                        key={tx.id}
+                        className="p-2.5 rounded-xl bg-black/40 border border-white/5 text-[11px] flex items-center justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-mono text-white/80 truncate">
+                            {tx.type} • {tx.userId}
+                          </div>
+                          <div className="text-[9px] text-white/40 font-mono">
+                            {new Date(tx.createdAt).toLocaleString()} • {tx.status}
+                          </div>
                         </div>
-                        <div className="text-[9px] text-white/40 font-mono">
-                          {new Date(tx.createdAt).toLocaleString()} • {tx.status}
+                        <div className="text-right font-mono font-bold text-cyan-300">
+                          {tx.amountTon ? `${tx.amountTon} TON` : ''}
+                          {tx.amountStars ? `${tx.amountStars} ⭐` : ''}
                         </div>
                       </div>
-                      <div className="text-right font-mono font-bold text-cyan-300">
-                        {tx.amountTon ? `${tx.amountTon} TON` : ''}
-                        {tx.amountStars ? `${tx.amountStars} ⭐` : ''}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

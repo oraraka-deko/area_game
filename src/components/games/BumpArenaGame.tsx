@@ -3,6 +3,7 @@ import { sound } from '../../utils/audio.js';
 import { haptic } from '../../utils/telegram.js';
 import { UserProfile } from '../../types/game.js';
 import { ArrowLeft, Play, Trophy, Users, ShieldAlert } from 'lucide-react';
+import { recordGameOutcome } from '../../utils/gameRecord.js';
 
 interface BumpArenaGameProps {
   user: UserProfile;
@@ -240,9 +241,29 @@ export const BumpArenaGame: React.FC<BumpArenaGameProps> = ({ user, setUser, onB
             setUser(prev => ({ ...prev, credits: +(prev.credits + win).toFixed(2) }));
             sound.playVictory();
             haptic.notification('success');
+
+            recordGameOutcome({
+              gameId: 'bumper',
+              userId: user.id,
+              betAmount,
+              payoutAmount: win,
+              multiplier: 3.75,
+              status: 'WIN',
+              gameDetails: { survivor: winner.name }
+            });
           } else {
             sound.playBettingClosed();
             haptic.notification('warning');
+
+            recordGameOutcome({
+              gameId: 'bumper',
+              userId: user.id,
+              betAmount,
+              payoutAmount: 0,
+              multiplier: 0,
+              status: 'LOSS',
+              gameDetails: { survivor: winner.name }
+            });
           }
         }
       }

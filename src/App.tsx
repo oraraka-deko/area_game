@@ -35,6 +35,8 @@ import { GiftsCatalogModal } from './components/GiftsCatalogModal.js';
 import { AdminPanelModal } from './components/AdminPanelModal.js';
 import { InAppWallet } from './types/wallet.js';
 import { sound } from './utils/audio.js';
+import { safeStorage } from './utils/storage.js';
+import { recordGameOutcome } from './utils/gameRecord.js';
 import {
   initTelegramApp,
   getTelegramUser,
@@ -61,7 +63,7 @@ export default function App() {
 
   // User state
   const [user, setUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('arena_user_profile');
+    const saved = safeStorage.getItem('arena_user_profile');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -92,7 +94,7 @@ export default function App() {
   const [showGiftsCatalogModal, setShowGiftsCatalogModal] = useState<boolean>(false);
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
 
-  // Sync In-App Wallet from server on mount
+  // Sync In-App Wallet and user from Neon PostgreSQL server on mount
   useEffect(() => {
     fetch(`/api/wallet/info?userId=${user.id}&username=${encodeURIComponent(user.username)}`)
       .then(res => res.json())
@@ -105,11 +107,8 @@ export default function App() {
       .catch(console.error);
   }, [user.id]);
 
-  const isAdmin =
-    user.id === '8903710651' ||
-    user.id.includes('admin') ||
-    user.username.toLowerCase().includes('admin') ||
-    true; // Allow access for the user / developer
+  // Guest users and test release users have direct access to Admin Panel
+  const isAdmin = true;
 
   // Telegram BackButton Synchronization
   useEffect(() => {
@@ -136,7 +135,19 @@ export default function App() {
   }, [currentTab, selectedGame, showWalletModal, showGiftsCatalogModal, showAdminModal]);
 
   useEffect(() => {
-    localStorage.setItem('arena_user_profile', JSON.stringify(user));
+    safeStorage.setItem('arena_user_profile', JSON.stringify(user));
+    // Sync with Neon PostgreSQL
+    fetch('/api/user/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id,
+        username: user.username,
+        avatar: user.avatar,
+        credits: user.credits,
+        inventory: user.inventory
+      })
+    }).catch(() => {});
   }, [user]);
 
   // Round & Game State
@@ -156,7 +167,7 @@ export default function App() {
 
   const [history, setHistory] = useState<RoundHistoryItem[]>(() => {
     try {
-      const saved = localStorage.getItem('arena_history');
+      const saved = safeStorage.getItem('arena_history');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return [];
@@ -258,13 +269,13 @@ export default function App() {
             setRoundState(data.state);
             if (data.history) {
               setHistory(data.history);
-              try { localStorage.setItem('arena_history', JSON.stringify(data.history)); } catch (e) {}
+              safeStorage.setItem('arena_history', JSON.stringify(data.history));
             }
           } else if (data.type === 'ROUND_STATE') {
             setRoundState(data.state);
             if (data.history) {
               setHistory(data.history);
-              try { localStorage.setItem('arena_history', JSON.stringify(data.history)); } catch (e) {}
+              safeStorage.setItem('arena_history', JSON.stringify(data.history));
             }
 
             // Handle transition to celebration
@@ -283,6 +294,38 @@ export default function App() {
                   credits: +(prev.credits + payout).toFixed(2),
                   inventory: [...prev.inventory, ...wonRelics]
                 }));
+
+                const myBet = data.state.bets.find((b: any) => b.playerId === user.id)?.amount || 0;
+                recordGameOutcome({
+                  id: `arena_${data.state.roundId}`,
+                  gameId: 'territory-arena',
+                  userId: user.id,
+                  betAmount: myBet,
+                  payoutAmount: payout,
+                  multiplier: myBet > 0 ? +(payout / myBet).toFixed(2) : 1,
+                  status: 'WIN',
+                  serverSeed: data.state.serverSeed,
+                  serverSeedHash: data.state.serverSeedHash,
+                  clientSeed: data.state.clientSeed,
+                  gameDetails: { roundId: data.state.roundId, totalPool: data.state.totalPool }
+                });
+              } else {
+                const myBet = data.state.bets.find((b: any) => b.playerId === user.id)?.amount;
+                if (myBet) {
+                  recordGameOutcome({
+                    id: `arena_${data.state.roundId}`,
+                    gameId: 'territory-arena',
+                    userId: user.id,
+                    betAmount: myBet,
+                    payoutAmount: 0,
+                    multiplier: 0,
+                    status: 'LOSS',
+                    serverSeed: data.state.serverSeed,
+                    serverSeedHash: data.state.serverSeedHash,
+                    clientSeed: data.state.clientSeed,
+                    gameDetails: { roundId: data.state.roundId, totalPool: data.state.totalPool }
+                  });
+                }
               }
             } else if (data.state.status === 'BETTING_OPEN' && prevStatusRef.current === 'WINNER_CELEBRATION') {
               setShowVictoryModal(false);

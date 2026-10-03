@@ -3,6 +3,7 @@ import { sound } from '../../utils/audio.js';
 import { haptic } from '../../utils/telegram.js';
 import { Sparkles, Bomb, Diamond, RotateCcw, ArrowLeft } from 'lucide-react';
 import { UserProfile } from '../../types/game.js';
+import { recordGameOutcome } from '../../utils/gameRecord.js';
 
 interface MinesGameProps {
   user: UserProfile;
@@ -75,6 +76,17 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
       // Reveal all mines
       const allRevealed = nextRevealed.map((r, i) => r || minePositions.has(i));
       setRevealed(allRevealed);
+
+      // Record loss in Neon Postgres
+      recordGameOutcome({
+        gameId: 'mines',
+        userId: user.id,
+        betAmount,
+        payoutAmount: 0,
+        multiplier: 0,
+        status: 'LOSS',
+        gameDetails: { mineCount, diamondsFound }
+      });
     } else {
       // Diamond found!
       const nextDiamonds = diamondsFound + 1;
@@ -98,6 +110,17 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, setUser, onBack }) =
     haptic.notification('success');
     setWon(true);
     setIsPlaying(false);
+
+    // Record win in Neon Postgres
+    recordGameOutcome({
+      gameId: 'mines',
+      userId: user.id,
+      betAmount,
+      payoutAmount: payout,
+      multiplier: currentMultiplier,
+      status: 'WIN',
+      gameDetails: { mineCount, diamondsFound }
+    });
 
     // Reveal rest of board
     setRevealed(Array(25).fill(true));

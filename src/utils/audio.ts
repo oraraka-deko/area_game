@@ -1,4 +1,5 @@
 // Web Audio API Sound Synthesizer for high-performance zero-asset audio
+import { safeStorage } from './storage.js';
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
@@ -6,7 +7,7 @@ class SoundEngine {
 
   constructor() {
     // Sound enabled by default
-    const saved = localStorage.getItem('arena_sound_enabled');
+    const saved = safeStorage.getItem('arena_sound_enabled');
     if (saved !== null) {
       this.enabled = saved === 'true';
     }
@@ -14,7 +15,7 @@ class SoundEngine {
 
   public toggle(): boolean {
     this.enabled = !this.enabled;
-    localStorage.setItem('arena_sound_enabled', String(this.enabled));
+    safeStorage.setItem('arena_sound_enabled', String(this.enabled));
     if (this.enabled) {
       this.playClick();
     }

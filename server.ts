@@ -10,6 +10,7 @@ import { askArenaMaster } from './server/geminiAnnouncer.js';
 import { ChatMessage } from './server/types.js';
 import fs from 'fs';
 import {
+  initDatabase,
   getUserWallet,
   updateUserWallet,
   getUserTransactions,
@@ -21,6 +22,13 @@ import {
   tonRateLimiter,
   getUserGifts,
   addUserGift,
+  recordGameRound,
+  getUserGameHistory,
+  recordTaskClaim,
+  getUserClaimedTasks,
+  recordActivityLog,
+  getActivityLogs,
+  getSystemStats,
   LedgerTransaction,
   UserGiftItem
 } from './server/db.js';
@@ -715,13 +723,156 @@ app.get('/api/admin/stats', async (req, res) => {
     const rateStats = tonRateLimiter.getStats();
     const recentTx = await getGlobalRecentTransactions(30);
     const config = await getSystemConfig();
+    const neonStats = await getSystemStats();
 
     res.json({
       rateLimiter: rateStats,
       recentTransactions: recentTx,
       depositAddress: config.depositWalletAddress,
-      isTestnet: config.isTestnet
+      isTestnet: config.isTestnet,
+      neonStats
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sync user profile with Neon Postgres
+app.post('/api/user/sync', async (req, res) => {
+  try {
+    const { userId, username, avatar, credits, inventory } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+    const updated = await updateUserWallet(userId, prev => ({
+      username: username || prev.username,
+      avatar: avatar || prev.avatar,
+      credits: typeof credits === 'number' ? credits : prev.credits,
+      inventory: Array.isArray(inventory) ? inventory : prev.inventory
+    }));
+
+    await recordActivityLog(userId, 'USER_SYNC', { username, credits });
+    res.json({ success: true, user: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Record game round into Neon Postgres
+app.post('/api/games/record', async (req, res) => {
+  try {
+    const { id, gameId, userId, betAmount, payoutAmount, multiplier, status, serverSeed, serverSeedHash, clientSeed, gameDetails } = req.body;
+    if (!gameId || !userId) {
+      return res.status(400).json({ error: 'gameId and userId are required' });
+    }
+
+    const roundId = id || `rnd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    await recordGameRound({
+      id: roundId,
+      gameId,
+      userId,
+      betAmount: Number(betAmount) || 0,
+      payoutAmount: Number(payoutAmount) || 0,
+      multiplier: Number(multiplier) || 0,
+      status: status || 'COMPLETED',
+      serverSeed,
+      serverSeedHash,
+      clientSeed,
+      gameDetails
+    });
+
+    // Also record game ledger transaction if net outcome != 0
+    const netWin = (Number(payoutAmount) || 0) - (Number(betAmount) || 0);
+    if (netWin !== 0) {
+      await recordLedgerTransaction({
+        id: `tx_${roundId}`,
+        userId,
+        type: netWin > 0 ? 'GAME_WIN' : 'GAME_BET',
+        amountCredits: Math.abs(netWin),
+        status: 'CONFIRMED',
+        comment: `${gameId} ${netWin > 0 ? 'win' : 'loss'} (multiplier: ${multiplier}x)`,
+        createdAt: Date.now(),
+        confirmedAt: Date.now()
+      });
+    }
+
+    await recordActivityLog(userId, 'GAME_PLAYED', { gameId, betAmount, payoutAmount, multiplier });
+    res.json({ success: true, roundId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get user game history from Neon Postgres
+app.get('/api/games/history', async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    const limit = parseInt(req.query.limit as string, 10) || 30;
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+    const history = await getUserGameHistory(userId, limit);
+    res.json({ history });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Claim daily task into Neon Postgres
+app.post('/api/tasks/claim', async (req, res) => {
+  try {
+    const { userId, taskId, rewardCredits, rewardStars } = req.body;
+    if (!userId || !taskId) {
+      return res.status(400).json({ error: 'userId and taskId are required' });
+    }
+
+    const result = await recordTaskClaim(
+      userId,
+      taskId,
+      Number(rewardCredits) || 0,
+      Number(rewardStars) || 0
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    const updatedWallet = await getUserWallet(userId);
+    res.json({ success: true, wallet: updatedWallet });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get claimed tasks for user from Neon Postgres
+app.get('/api/tasks/claimed', async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+    const claimed = await getUserClaimedTasks(userId);
+    res.json({ claimed });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Log client activity
+app.post('/api/activity/log', async (req, res) => {
+  try {
+    const { userId, action, details } = req.body;
+    const ip = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress;
+    await recordActivityLog(userId || 'guest', action || 'CLIENT_ACTION', details || {}, ip);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin activity logs
+app.get('/api/admin/activity-logs', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const logs = await getActivityLogs(limit);
+    res.json({ logs });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -729,6 +880,8 @@ app.get('/api/admin/stats', async (req, res) => {
 
 // Vite Middleware integration for development
 async function startServer() {
+  await initDatabase();
+
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

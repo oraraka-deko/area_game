@@ -1,20 +1,28 @@
-import './polyfill.js';
+import './polyfill.ts';
 import React, { StrictMode, Component, ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TonConnectUIProvider } from '@tonconnect/ui-react';
 import App from './App.tsx';
 import './index.css';
 
-// Robust manifest URL resolution
+// Robust absolute manifest URL resolution required by TonConnect UI
 function getManifestUrl(): string {
   try {
-    if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null') {
-      return `${window.location.origin}/tonconnect-manifest.json`;
+    if (typeof window !== 'undefined' && window.location) {
+      const origin = window.location.origin;
+      if (origin && origin !== 'null' && origin.startsWith('http')) {
+        return `${origin}/tonconnect-manifest.json`;
+      }
+      const href = window.location.href;
+      if (href && href.startsWith('http')) {
+        const base = href.split('?')[0].replace(/\/+$/, '');
+        return `${base}/tonconnect-manifest.json`;
+      }
     }
   } catch (e) {
-    console.warn('Error reading window.location.origin:', e);
+    console.warn('Error reading window.location:', e);
   }
-  return '/tonconnect-manifest.json';
+  return 'https://raw.githubusercontent.com/ton-blockchain/ton-connect/main/apps/demo/public/tonconnect-manifest.json';
 }
 
 interface ErrorBoundaryProps {
@@ -60,10 +68,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           )}
           <button
             onClick={() => {
-              localStorage.clear();
+              try { localStorage.clear(); } catch (e) {}
               window.location.reload();
             }}
-            className="mt-6 px-6 py-3 rounded-2xl bg-[#ccff00] text-black font-black text-xs uppercase tracking-wider shadow-lg shadow-[#ccff00]/20 active:scale-95 transition"
+            className="mt-6 px-6 py-3 rounded-2xl bg-[#ccff00] text-black font-black text-xs uppercase tracking-wider shadow-lg shadow-[#ccff00]/20 active:scale-95 transition cursor-pointer"
           >
             Reload Arena
           </button>
@@ -74,30 +82,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-// Safe wrapper for TonConnect in case iframe blocks localStorage or Web3
-const SafeTonConnectProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const manifestUrl = getManifestUrl();
-
-  try {
-    return (
-      <TonConnectUIProvider manifestUrl={manifestUrl}>
-        {children}
-      </TonConnectUIProvider>
-    );
-  } catch (err) {
-    console.warn('TonConnectUIProvider initialization error, falling back without provider:', err);
-    return <>{children}</>;
-  }
-};
+const manifestUrl = getManifestUrl();
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
   createRoot(rootElement).render(
     <StrictMode>
       <ErrorBoundary>
-        <SafeTonConnectProvider>
+        <TonConnectUIProvider manifestUrl={manifestUrl}>
           <App />
-        </SafeTonConnectProvider>
+        </TonConnectUIProvider>
       </ErrorBoundary>
     </StrictMode>
   );
