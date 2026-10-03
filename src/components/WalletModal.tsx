@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { beginCell } from '@ton/core';
 import { InAppWallet, WalletTransaction } from '../types/wallet.js';
 import { UserProfile } from '../types/game.js';
 import { sound } from '../utils/audio.js';
@@ -146,24 +145,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         throw new Error(depData.error || 'Failed to create deposit session');
       }
 
-      const { depositId, comment, depositAddress } = depData;
+      const { depositId, comment, depositAddress, payload } = depData;
 
       setDepositStatus({
         step: 'AWAITING_WALLET',
         message: 'Please confirm the payment request in your connected TON wallet...'
       });
-
-      // 2. Prepare payload comment in cell
-      let payloadBase64 = '';
-      try {
-        const bodyCell = beginCell()
-          .storeUint(0, 32) // text comment opcode
-          .storeStringTail(comment)
-          .endCell();
-        payloadBase64 = bodyCell.toBoc().toString('base64');
-      } catch (cellErr) {
-        console.warn('Failed to build cell comment, proceeding without payload:', cellErr);
-      }
 
       const nanoAmount = Math.round(tonAmount * 1e9).toString();
       const transaction = {
@@ -172,7 +159,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           {
             address: depositAddress,
             amount: nanoAmount,
-            payload: payloadBase64 || undefined
+            payload: payload || undefined
           }
         ]
       };

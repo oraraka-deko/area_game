@@ -29,6 +29,7 @@ import {
   createStarsInvoiceLink,
   processTonWithdrawal
 } from './server/tonVerification.js';
+import { beginCell } from '@ton/core';
 
 dotenv.config();
 
@@ -264,12 +265,24 @@ app.post('/api/wallet/deposit-request', async (req, res) => {
     };
     await recordLedgerTransaction(tx);
 
+    let payload = '';
+    try {
+      const bodyCell = beginCell()
+        .storeUint(0, 32) // text comment opcode
+        .storeStringTail(comment)
+        .endCell();
+      payload = bodyCell.toBoc().toString('base64');
+    } catch (e) {
+      console.warn('Failed to build BOC payload on server:', e);
+    }
+
     res.json({
       success: true,
       depositId,
       comment,
       depositAddress: config.depositWalletAddress,
-      amountTon: Number(amountTon)
+      amountTon: Number(amountTon),
+      payload
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to create deposit request' });

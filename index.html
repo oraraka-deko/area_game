@@ -9,6 +9,11 @@
     <meta property="og:description" content="Provably fair multiplayer territory jackpot arena, Mines, Cases, Crush, and Sumo Bumper PvP games with TON Connect and Telegram Mini App integration." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- Global & environment polyfills for browser runtime -->
+    <script>
+      window.global = window;
+      if (!window.process) window.process = { env: {} };
+    </script>
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
